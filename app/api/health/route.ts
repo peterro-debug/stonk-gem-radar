@@ -10,6 +10,7 @@ export async function GET() {
     const monitor = await pairMonitorStatus();
     sources = {
       pairMonitor: monitor.status,
+      stateError: monitor.stateError,
       checkedAt: monitor.state?.checkedAt,
       registryLastSuccessAt: monitor.state?.registryLastSuccessAt,
       registryError: monitor.state?.registryError,
