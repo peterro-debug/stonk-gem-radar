@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureHeliusWebhook } from "@/lib/helius-webhook";
 import { getTelegramBotInfo, resolveTelegramChatId, sendTelegram } from "@/lib/telegram";
+import { ensurePairMonitor } from "@/lib/ensure-pair-monitor";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -50,6 +51,9 @@ export async function POST(req: NextRequest) {
     telegram = { ok: false, botUsername, error: safeError(error) };
   }
 
-  const ok = !("error" in helius) && telegram.ok;
-  return NextResponse.json({ ok, helius, telegram }, { status: ok ? 200 : 207 });
+  let monitor;
+  try { monitor = await ensurePairMonitor(); }
+  catch { monitor = { error: "Could not start pair monitor" }; }
+  const ok = !("error" in helius) && telegram.ok && !("error" in monitor);
+  return NextResponse.json({ ok, helius, telegram, monitor }, { status: ok ? 200 : 207 });
 }

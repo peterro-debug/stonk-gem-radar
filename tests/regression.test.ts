@@ -80,6 +80,30 @@ function base(overrides: Partial<Base> = {}): Base {
 }
 
 describe("LinkedInu/JUPCAT regression gates", () => {
+  it("observes a sparse early holder sample instead of permanently skipping it", () => {
+    const s = base({ ageMinutes: .4, holders: { holders: 5, top10Pct: 100, creatorPct: 20, sampleComplete: true, poolExclusionKnown: true } });
+    expect(classify(s).status).toBe("NO SIGNAL");
+    expect(classify({ ...s, ageMinutes: 7 }).status).toBe("SKIP");
+  });
+
+  it("can progress from early incomplete data to GEM after the distribution becomes valid", () => {
+    const s = base({ ageMinutes: .4, holders: { holders: 2, top10Pct: 100, sampleComplete: true } });
+    const previous = { ...s, ...classify(s) };
+    expect(classify(base(), { previous }).status).toBe("GEM");
+  });
+
+  it("does not invalidate on a failed or truncated holder refresh", () => {
+    const prior = { ...base(), ...classify(base()) };
+    expect(classify(base({ holders: { holders: 0, sampleComplete: false } }), { previous: prior, everAlerted: true }).status).toBe("NO SIGNAL");
+  });
+
+  it("keeps confirmed insider risk fatal even during holder warmup", () => {
+    expect(classify(base({ ageMinutes: .4, holders: { holders: 1, sampleComplete: false }, wallet: wallet("RISKY") })).status).toBe("SKIP");
+  });
+
+  it("does not pass a signal when pool exclusion is unknown", () => {
+    expect(classify(base({ holders: { holders: 500, top10Pct: 10, poolExclusionKnown: false } })).status).toBe("NO SIGNAL");
+  });
   it("keeps the original LinkedInu-style setup eligible for GEM", () => {
     const result = classify(base());
     expect(result.status).toBe("GEM");

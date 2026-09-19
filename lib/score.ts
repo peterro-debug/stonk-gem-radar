@@ -22,6 +22,11 @@ export function classify(
   const liq = p.liquidityUsd ?? 0;
   const top10 = h.top10Pct;
   const dev = h.creatorPct;
+  // Early balances describe the first few buyers, not a settled distribution.
+  // Missing/truncated samples must not terminate a 21-day monitor or pass GEM.
+  const holdersPending = h.sampleComplete === false || h.poolExclusionKnown === false
+    || h.holders === 0 || top10 == null || (s.ageMinutes < 7 && h.holders < 60);
+  if (holdersPending) risks.push("holder distribution pending — continue observation");
 
   if (mc >= 5_000 && mc <= 300_000) { score += 16; reasons.push("asymmetric MC window"); }
   else if (mc > 300_000 && mc <= 750_000) { score += 10; reasons.push("still-early MC"); }
@@ -45,12 +50,12 @@ export function classify(
 
   if (h.holders >= 60) { score += 7; reasons.push("holder breadth"); }
   if (h.holders >= 150) { score += 6; reasons.push("strong holder breadth"); }
-  if (top10 != null && top10 <= 25) { score += 8; reasons.push("acceptable top-10 concentration"); }
+  if (!holdersPending && top10 != null && top10 <= 25) { score += 8; reasons.push("acceptable top-10 concentration"); }
   if (top10 != null && top10 > 35) risks.push(`top-10 concentration ${top10.toFixed(1)}%`);
-  if (top10 != null && top10 > 55) fatal.push(`top-10 concentration ${top10.toFixed(1)}%`);
-  if (dev != null && dev <= 2) { score += 5; reasons.push("low creator balance"); }
+  if (!holdersPending && top10 != null && top10 > 55) fatal.push(`top-10 concentration ${top10.toFixed(1)}%`);
+  if (!holdersPending && dev != null && dev <= 2) { score += 5; reasons.push("low creator balance"); }
   if (dev != null && dev > 8) risks.push(`creator still holds ${dev.toFixed(1)}%`);
-  if (dev != null && dev > 15) fatal.push(`creator controls ${dev.toFixed(1)}%`);
+  if (!holdersPending && dev != null && dev > 15) fatal.push(`creator controls ${dev.toFixed(1)}%`);
 
   if (liq >= 10_000) { score += 5; reasons.push("usable liquidity"); }
   if (liq >= 25_000) { score += 4; reasons.push("solid liquidity"); }
@@ -73,7 +78,7 @@ export function classify(
     score += 8;
     reasons.push("bundle/sniper/funder gate passed");
   } else if (s.wallet.verification === "RISKY") {
-    fatal.push(...s.wallet.flags);
+    fatal.push(...(s.wallet.flags.length ? s.wallet.flags : ["wallet gate RISKY"]));
   } else {
     risks.push("wallet gate UNKNOWN — cannot become GEM");
     risks.push(...s.wallet.flags.slice(0, 2));
@@ -92,7 +97,8 @@ export function classify(
   }
 
   const prior = context.previous;
-  if (prior && prior.holders.holders >= 100 && h.holders < prior.holders.holders * 0.7) {
+  if (!holdersPending && prior && prior.holders.sampleComplete !== false
+    && prior.holders.holders >= 100 && h.holders < prior.holders.holders * 0.7) {
     fatal.push("holder base fell more than 30% between checks");
   }
 
@@ -102,6 +108,8 @@ export function classify(
     const status: SignalStatus = hadAlert ? "INVALIDATED" : "SKIP";
     return { score: rawScore, status, reasons, risks: [...new Set([...risks, ...fatal, "hard risk threshold hit"])] };
   }
+
+  if (holdersPending) return { score: rawScore, status: "NO SIGNAL", reasons, risks: [...new Set(risks)] };
 
   let status: SignalStatus = "NO SIGNAL";
   const walletPassed = s.wallet.verification === "CLEAN";

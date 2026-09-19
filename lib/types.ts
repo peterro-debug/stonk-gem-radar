@@ -22,6 +22,15 @@ export type Launch = {
   baseVault?: string;
   quoteVault?: string;
   source?: "helius" | "stonk-api" | "manual";
+  pairEvent?: PairEvent;
+};
+
+export type PairEvent = {
+  quoteMint: string;
+  detectedAt: number;
+  source: "stonk-registry" | "x-announcement";
+  sourceUrl: string;
+  description: string;
 };
 
 export type PairMetrics = {
@@ -44,6 +53,9 @@ export type PairMetrics = {
   priceChange1h?: number;
   priceChange24h?: number;
   pairCreatedAt?: number;
+  valuationSource?: "dex-base" | "stonk";
+  valuationPairAddress?: string;
+  flowReversed?: boolean;
 };
 
 export type HolderMetrics = {
@@ -52,6 +64,9 @@ export type HolderMetrics = {
   largestPct?: number;
   creatorPct?: number;
   excludedPoolAccounts?: number;
+  sampleComplete?: boolean;
+  sampledAccounts?: number;
+  poolExclusionKnown?: boolean;
 };
 
 export type TraderMetrics = {
@@ -75,6 +90,7 @@ export type QuoteMeta = TokenMeta & {
   launchRank?: number;
   isFirstMover?: boolean;
   isNewPair?: boolean;
+  event?: PairEvent;
 };
 
 export type RewardMetrics = {
@@ -131,6 +147,7 @@ export type NarrativeMetrics = {
   mascotFit: boolean;
   rewardFit: boolean;
   firstMoverFit: boolean;
+  method?: "rules";
 };
 
 export type TrendMetrics = {

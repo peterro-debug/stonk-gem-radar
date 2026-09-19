@@ -67,6 +67,7 @@ export async function sendTelegram(text: string): Promise<void> {
   const res = await fetch(`${TG_API}/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },
+    signal: AbortSignal.timeout(12_000),
     body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
   });
   if (!res.ok) {

@@ -2,6 +2,7 @@ import { WALLET_LIMITS } from "./constants";
 import type { WalletRiskMetrics } from "./types";
 
 function n(value: unknown): number | undefined {
+  if (value == null || value === "" || typeof value === "boolean") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }

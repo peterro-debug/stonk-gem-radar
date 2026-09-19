@@ -1,21 +1,5 @@
 import type { NarrativeMetrics, QuoteMeta, RewardMetrics, TokenMeta } from "./types";
-
-const motifs: Record<string, string[]> = {
-  PEPE: ["pepe", "frog", "feelsgood", "feels good", "kek", "wojak", "rare pepe"],
-  JUP: ["jup", "jupiter", "jupcat", "jupiter cat", "cat"],
-  CARDS: ["card", "cards", "psa", "psa10", "pokemon", "pokedex", "collector"],
-  ZEC: ["zec", "zcash", "privacy", "anon", "shield", "zatoshi", "cypher"],
-  XMR: ["xmr", "monero", "privacy", "anon", "ring", "ghost"],
-  BTC: ["btc", "bitcoin", "satoshi", "nakamoto", "orange", "hodl", "bitconnect"],
-  WBTC: ["btc", "bitcoin", "satoshi", "nakamoto", "orange", "hodl", "bitconnect"],
-  SOL: ["sol", "solana", "toly", "validator", "bonk"],
-  BONK: ["bonk", "dog", "inu"],
-  WIF: ["wif", "hat", "dog"],
-  SPYX: ["spy", "sp500", "s&p", "wall street", "stonk", "bull", "america"],
-  GMEX: ["gme", "gamestop", "roaring kitty", "kitty", "apes"],
-  NVDAX: ["nvidia", "nvda", "jensen", "gpu", "ai"],
-  TSLAX: ["tesla", "tsla", "elon", "cybertruck"],
-};
+import { containsPhrase, nameAssociation } from "./name-fit";
 
 const mascots: Record<string, string[]> = {
   JUP: ["cat", "jupcat", "jupiter cat"],
@@ -29,7 +13,6 @@ const norm = (value?: string) => (value || "").toLowerCase().replace(/[^a-z0-9]+
 export function narrativeScore(token: TokenMeta, quote: QuoteMeta, rewards: RewardMetrics): NarrativeMetrics {
   const name = norm(`${token.name || ""} ${token.symbol || ""}`);
   const qsym = (quote.symbol || "").toUpperCase();
-  const qname = norm(quote.name);
   const reasons: string[] = [];
   let score = 0;
 
@@ -40,19 +23,16 @@ export function narrativeScore(token: TokenMeta, quote: QuoteMeta, rewards: Rewa
     reasons.push("simple, readable meme");
   }
 
-  const directName = Boolean(qname && name.includes(qname));
-  const directSymbol = Boolean(qsym && name.includes(qsym.toLowerCase()));
+  const association = nameAssociation(token, quote);
   const keys = [qsym, qsym.replace(/X$/, "")];
-  const vocabulary = [...new Set(keys.flatMap((key) => motifs[key] || []))];
-  const motif = vocabulary.find((word) => name.includes(norm(word)));
-  const pairFit = directName || directSymbol || Boolean(motif);
+  const pairFit = association.matched;
   if (pairFit) {
     score += 1;
-    reasons.push(directName || directSymbol ? "direct pair-name link" : `native pair motif: ${motif}`);
+    reasons.push(association.reason);
   }
 
   const mascot = [...new Set(keys.flatMap((key) => mascots[key] || []))]
-    .find((word) => name.includes(norm(word)));
+    .find((word) => containsPhrase(name, word));
   const mascotFit = Boolean(mascot);
   if (mascotFit) {
     score += 1;
@@ -71,7 +51,7 @@ export function narrativeScore(token: TokenMeta, quote: QuoteMeta, rewards: Rewa
     reasons.push(quote.launchRank ? `pair first mover #${quote.launchRank}` : "newly registered pair event");
   }
 
-  if (/inu|cat|dog|frog|pepe|wojak|chad|baby|mini|ai|agent|coin|moon|bull|bear|meme/.test(name)) {
+  if (["inu", "cat", "dog", "frog", "pepe", "wojak", "chad", "baby", "mini", "ai", "agent", "coin", "moon", "bull", "bear", "meme", "linkedinu", "jupcat"].some(word => containsPhrase(name, word))) {
     score += 1;
     reasons.push("recognizable meme primitive");
   }
@@ -83,5 +63,6 @@ export function narrativeScore(token: TokenMeta, quote: QuoteMeta, rewards: Rewa
     mascotFit,
     rewardFit,
     firstMoverFit,
+    method: "rules",
   };
 }

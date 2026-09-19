@@ -5,6 +5,7 @@ import { analyzeLaunch } from "@/lib/analyze";
 import { formatAlert } from "@/lib/format";
 import { sendTelegram } from "@/lib/telegram";
 import { isAlertStatus, shouldNotify } from "@/lib/transitions";
+import { formatCandidate, isEarlyNameCandidate } from "@/lib/candidate";
 
 async function check(launch: Launch, context: AnalysisContext): Promise<Snapshot> {
   "use step";
@@ -16,8 +17,14 @@ async function notify(snapshot: Snapshot): Promise<void> {
   await sendTelegram(formatAlert(snapshot));
 }
 
+async function notifyCandidate(snapshot: Snapshot): Promise<void> {
+  "use step";
+  await sendTelegram(formatCandidate(snapshot));
+}
+
 export function shouldTrackBuild(snapshot: Snapshot, everAlerted: boolean): boolean {
   return everAlerted
+    || (snapshot.ageMinutes < 360 && snapshot.holders.sampleComplete === false)
     || snapshot.score >= 45
     || snapshot.narrative.score >= 3
     || snapshot.rewards.nativeQuoteReward
@@ -58,6 +65,7 @@ export async function launchWorkflow(launch: Launch): Promise<RadarRunResult> {
   let lastNotified: SignalStatus = "NO SIGNAL";
   let lastStatus: SignalStatus = "NO SIGNAL";
   let everAlerted = false;
+  let candidateNotified = false;
   let checks = 0;
   let stoppedReason: string | undefined;
 
@@ -97,6 +105,11 @@ export async function launchWorkflow(launch: Launch): Promise<RadarRunResult> {
     peakMarketCap = snapshot.peakMarketCap;
     lowMarketCap = snapshot.lowMarketCap;
     lastStatus = snapshot.status;
+
+    if (!candidateNotified && isEarlyNameCandidate(snapshot) && !isAlertStatus(snapshot.status)) {
+      await notifyCandidate(snapshot);
+      candidateNotified = true;
+    }
 
     if (shouldNotify(lastNotified, snapshot.status)) {
       await notify(snapshot);

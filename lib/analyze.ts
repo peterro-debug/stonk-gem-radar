@@ -8,6 +8,8 @@ import { getStonkContext } from "./stonk";
 import { calculateTrend } from "./trends";
 import { getWalletRiskMetrics } from "./wallet-risk";
 import type { AnalysisContext, Launch, PairMetrics, Snapshot, TokenMeta } from "./types";
+import { activePairEvent } from "./pair-events";
+import { pairMonitorStatus } from "./pair-monitor-status";
 
 function mergeDefined<T extends object>(base: T, override: Partial<T>): T {
   const out = { ...base } as Record<string, unknown>;
@@ -43,7 +45,7 @@ export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {
   const holders = await getHolderMetrics(launch.mint, {
     creator: launch.creator,
     excludeTokenAccounts: [...new Set(excludedTokenAccounts)],
-  });
+  }).catch(() => ({ holders: 0, sampleComplete: false, poolExclusionKnown: excludedTokenAccounts.length > 0 }));
 
   const now = Date.now();
   const ageMinutes = Math.max(0, (now - launch.launchedAt) / 60_000);
@@ -55,6 +57,17 @@ export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {
     symbol: stonk.quote.symbol || quoteFallback.symbol,
     image: stonk.quote.image || quoteFallback.image,
   };
+  let event = launch.pairEvent || context.previous?.quote.event;
+  if (!event && ageMinutes <= 30) {
+    try {
+      const monitor = await pairMonitorStatus();
+      event = monitor.state && activePairEvent(monitor.state.events, launch.quoteMint, now);
+    } catch { /* Event source unavailable: retain first-mover inference, never invent an event. */ }
+  }
+  if (event && activePairEvent([event], launch.quoteMint, now)) {
+    quote.event = event;
+    quote.isNewPair = true;
+  }
   const pair = mergeDefined<PairMetrics>(stonk.pair, dexPair);
   const marketCap = pair.marketCap ?? pair.fdv;
   const peakMarketCap = Math.max(

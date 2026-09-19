@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { discoverCandidates } from "@/lib/discovery";
 import { launchWorkflow } from "@/workflows/launch-workflow";
+import { ensurePairMonitor } from "@/lib/ensure-pair-monitor";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,6 +19,7 @@ async function runDiscovery(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  const monitor = await ensurePairMonitor();
   const candidates = await discoverCandidates();
   const configuredLimit = Number(process.env.DISCOVERY_MAX_STARTS || 25);
   const limit = Number.isFinite(configuredLimit) ? Math.max(1, Math.min(100, configuredLimit)) : 25;
@@ -38,6 +40,7 @@ async function runDiscovery(req: NextRequest) {
 
   return NextResponse.json({
     scannedAt: new Date().toISOString(),
+    monitor,
     candidates: candidates.length,
     started: started.length,
     runs: started,

@@ -41,6 +41,9 @@ export async function getHolderMetrics(
   const excludedAccounts = new Set(opts.excludeTokenAccounts || []);
   let page = 1;
   let total = 0n;
+  let sampleComplete = false;
+  let sampledAccounts = 0;
+  const seenAccounts = new Set<string>();
 
   while (page <= 6) {
     const result = await rpc("getTokenAccounts", {
@@ -49,21 +52,26 @@ export async function getHolderMetrics(
       displayOptions: {},
       mint,
     });
-    const accounts: any[] = result?.token_accounts || [];
-    if (!accounts.length) break;
+    if (!Array.isArray(result?.token_accounts)) throw new Error("Incomplete Helius holder response");
+    const accounts: any[] = result.token_accounts;
+    sampledAccounts += accounts.length;
+    if (!accounts.length) { sampleComplete = true; break; }
     for (const a of accounts) {
+      if (!a?.address || seenAccounts.has(a.address)) continue;
+      seenAccounts.add(a.address);
       if (!a?.owner || excludedAccounts.has(a.address)) continue;
       const amount = BigInt(String(a.amount || "0"));
       if (amount <= 0n) continue;
       owners.set(a.owner, (owners.get(a.owner) || 0n) + amount);
       total += amount;
     }
-    if (accounts.length < 1000) break;
+    if (accounts.length < 1000) { sampleComplete = true; break; }
     page += 1;
   }
 
   const balances = [...owners.entries()].sort((a, b) => (a[1] === b[1] ? 0 : a[1] > b[1] ? -1 : 1));
-  const pct = (n: bigint) => total > 0n ? Number((n * 1_000_000n) / total) / 10_000 : 0;
+  const pct = (n: bigint) => total > 0n && sampleComplete
+    ? Number((n * 1_000_000n) / total) / 10_000 : undefined;
   const top10 = balances.slice(0, 10).reduce((s, [, a]) => s + a, 0n);
   const creatorBal = opts.creator ? owners.get(opts.creator) || 0n : 0n;
 
@@ -73,6 +81,9 @@ export async function getHolderMetrics(
     largestPct: balances.length ? pct(balances[0][1]) : undefined,
     creatorPct: opts.creator ? pct(creatorBal) : undefined,
     excludedPoolAccounts: excludedAccounts.size,
+    sampleComplete,
+    sampledAccounts,
+    poolExclusionKnown: excludedAccounts.size > 0,
   };
 }
 

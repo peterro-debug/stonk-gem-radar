@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { parseStonkLaunches } from "@/lib/parse-launch";
 import { launchWorkflow } from "@/workflows/launch-workflow";
+import { ensurePairMonitor } from "@/lib/ensure-pair-monitor";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,8 @@ export async function POST(req: NextRequest) {
 
   const payload = await req.json();
   const launches = parseStonkLaunches(payload);
+  // Authenticated traffic also starts/restarts the registry monitor after deployment.
+  await ensurePairMonitor().catch(error => console.error("Pair monitor start failed", error instanceof Error ? error.message : "unknown"));
   const runIds: string[] = [];
 
   for (const launch of launches) {

@@ -14,15 +14,15 @@ type SetupResult = {
 
 export default function AdminPage() {
   const [secret, setSecret] = useState("");
-  const [busy, setBusy] = useState<"setup" | "demo" | null>(null);
+  const [busy, setBusy] = useState<"setup" | "demo" | "monitor" | "status" | null>(null);
   const [result, setResult] = useState<SetupResult | null>(null);
 
-  async function runRequest(endpoint: string, action: "setup" | "demo") {
+  async function runRequest(endpoint: string, action: "setup" | "demo" | "monitor" | "status") {
     setBusy(action);
     setResult(null);
     try {
       const response = await fetch(endpoint, {
-        method: "POST",
+        method: action === "status" ? "GET" : "POST",
         headers: { authorization: `Bearer ${secret}` },
       });
       const body = await response.json() as SetupResult;
@@ -58,6 +58,14 @@ export default function AdminPage() {
         <button type="submit" disabled={busy !== null} style={{ font: "inherit", padding: 10, cursor: "pointer" }}>
           {busy === "setup" ? "Kobler til …" : "Koble Helius og Telegram"}
         </button>
+        <button type="button" disabled={busy !== null || !secret}
+          onClick={() => runRequest("/api/admin/monitor", "monitor")} style={{ font: "inherit", padding: 10 }}>
+          {busy === "monitor" ? "Starter …" : "Start overvåkning av nye par"}
+        </button>
+        <button type="button" disabled={busy !== null || !secret}
+          onClick={() => runRequest("/api/admin/monitor", "status")} style={{ font: "inherit", padding: 10 }}>
+          {busy === "status" ? "Henter …" : "Vis kildestatus og siste parhendelser"}
+        </button>
         <button
           type="button"
           disabled={busy !== null || !secret}
@@ -71,12 +79,14 @@ export default function AdminPage() {
         Demoen henter én aktuell StonkFun-kandidat, kjører hele analysemodellen og sender resultatet til Telegram.
         Den kjøper ingenting og starter ingen varig overvåkning.
       </p>
+      <p>Parregisteret sjekkes omtrent hvert minutt. X krever egen lesetilgang; status viser siste vellykkede innhenting.
+        Tidlige navnekandidater er hypoteser og gjennomgår fortsatt markeds- og risikosjekker.</p>
       {result && (
         <section aria-live="polite" style={{ marginTop: 24 }}>
           <h2>
             {result.demo
               ? result.ok ? "Demotest fullført" : "Demotest feilet"
-              : result.ok ? "Oppsett fullført" : "Oppsett trenger oppfølging"}
+              : result.ok ? "Forespørsel fullført" : "Trenger oppfølging"}
           </h2>
           <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(result, null, 2)}</pre>
         </section>

@@ -8,6 +8,7 @@ function baseUrl(): string {
 }
 
 function num(value: unknown): number | undefined {
+  if (value == null || value === "" || typeof value === "boolean") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -17,6 +18,7 @@ async function getJson(path: string): Promise<any | undefined> {
     const res = await fetch(`${baseUrl()}${path}`, {
       headers: { accept: "application/json" },
       cache: "no-store",
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return undefined;
     return await res.json();
@@ -94,10 +96,9 @@ async function getPairLaunchContext(quoteMint: string, mint: string): Promise<Pi
     launchCount,
     launchRank,
     isFirstMover,
-    // The official API does not expose pair-added timestamps. A manually
-    // registered announcement or one of the first three launches is the safe
-    // event-first proxy; high-volume old quote assets are not called "new".
-    isNewPair: manualEvent || Boolean(isFirstMover && (launchCount || 0) <= 5),
+    // First-mover rank is not proof of a new pair. Durable registry/X events
+    // are attached by the monitor/analyzer; manual entries remain explicit.
+    isNewPair: manualEvent,
   };
 }
 
@@ -148,6 +149,7 @@ export async function getStonkContext(mint: string, quoteMint: string): Promise<
       ...pairContext,
     },
     pair: {
+      valuationSource: "stonk",
       priceUsd: num(row.market?.priceUsd),
       marketCap: num(row.market?.marketCapUsd),
       fdv: num(row.market?.fdvUsd),
@@ -171,6 +173,19 @@ export async function getStonkContext(mint: string, quoteMint: string): Promise<
 export async function listStonkTokens(sort: "newest" | "volume" | "marketCap", page: number, pageSize = 100): Promise<StonkTokenRow[]> {
   const body = await getJson(`/tokens?sort=${sort}&page=${page}&pageSize=${pageSize}`);
   return Array.isArray(body?.data?.tokens) ? body.data.tokens : [];
+}
+
+export async function listRecentLaunches(since: number): Promise<StonkTokenRow[]> {
+  const rows: StonkTokenRow[] = [];
+  for (let page = 1; page <= 5; page++) {
+    const body = await getJson(`/tokens?sort=newest&page=${page}&pageSize=100`);
+    if (!Array.isArray(body?.data?.tokens)) throw new Error("Stonk launch feed unavailable");
+    const batch: StonkTokenRow[] = body.data.tokens;
+    rows.push(...batch);
+    if (batch.length < 100 || batch.some(row => Date.parse(row.createdAt || "") < since)) return rows;
+  }
+  // Don't silently advance the cursor through an unobserved burst of launches.
+  throw new Error("Stonk launch feed exceeds 500-row scan window");
 }
 
 export function stonkRowToLaunch(row: StonkTokenRow): Launch | undefined {
