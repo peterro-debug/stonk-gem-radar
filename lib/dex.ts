@@ -35,6 +35,11 @@ export async function getPairMetrics(mint: string, quoteMint?: string): Promise<
     sells5m: n(p.txns?.m5?.sells),
     buys1h: n(p.txns?.h1?.buys),
     sells1h: n(p.txns?.h1?.sells),
+    buys24h: n(p.txns?.h24?.buys),
+    sells24h: n(p.txns?.h24?.sells),
+    priceChange5m: n(p.priceChange?.m5),
+    priceChange1h: n(p.priceChange?.h1),
+    priceChange24h: n(p.priceChange?.h24),
     pairCreatedAt: n(p.pairCreatedAt),
   };
 }

@@ -1,51 +1,117 @@
-import { sleep } from "workflow";
-import type { Launch, Snapshot } from "@/lib/types";
+import { createHook, sleep } from "workflow";
+import type { AnalysisContext, Launch, RadarRunResult, SignalStatus, Snapshot } from "@/lib/types";
+import { CHECKPOINT_AGES_MS, DAY, MINUTE } from "@/lib/constants";
 import { analyzeLaunch } from "@/lib/analyze";
 import { formatAlert } from "@/lib/format";
 import { sendTelegram } from "@/lib/telegram";
+import { isAlertStatus, shouldNotify } from "@/lib/transitions";
 
-async function check(launch: Launch, peak?: number): Promise<Snapshot> {
+async function check(launch: Launch, context: AnalysisContext): Promise<Snapshot> {
   "use step";
-  return analyzeLaunch(launch, peak);
+  return analyzeLaunch(launch, context);
 }
 
-async function notify(s: Snapshot): Promise<void> {
+async function notify(snapshot: Snapshot): Promise<void> {
   "use step";
-  await sendTelegram(formatAlert(s));
+  await sendTelegram(formatAlert(snapshot));
 }
 
-const strength: Record<Snapshot["status"], number> = {
-  "NO SIGNAL": 0,
-  "FLASH": 1,
-  "EARLY WATCH": 2,
-  "RECLAIM": 3,
-  "GEM": 4,
-  "SKIP": -1,
-};
+export function shouldTrackBuild(snapshot: Snapshot, everAlerted: boolean): boolean {
+  return everAlerted
+    || snapshot.score >= 45
+    || snapshot.narrative.score >= 3
+    || snapshot.rewards.nativeQuoteReward
+    || (snapshot.holders.holders >= 60 && (snapshot.pair.volume24h || 0) >= 20_000);
+}
 
-export async function launchWorkflow(launch: Launch) {
+export function shouldTrackReawakening(snapshot: Snapshot, everAlerted: boolean): boolean {
+  return everAlerted
+    || snapshot.status === "REAWAKENING"
+    || snapshot.status === "RECLAIM"
+    || snapshot.status === "GEM"
+    || snapshot.narrative.score >= 4
+    || (snapshot.rewards.nativeQuoteReward && (snapshot.rewards.rewardedHolders || 0) >= 100)
+    || snapshot.score >= 60;
+}
+
+export async function launchWorkflow(launch: Launch): Promise<RadarRunResult> {
   "use workflow";
 
-  let peak = 0;
-  let lastNotified: Snapshot["status"] = "NO SIGNAL";
-
-  // Give market/indexers a few seconds to expose the first trade/holder state.
-  await sleep("20s");
-  const schedule = ["0s", "2m40s", "4m", "5m", "8m"] as const;
-
-  for (const delay of schedule) {
-    if (delay !== "0s") await sleep(delay);
-    const s = await check(launch, peak);
-    peak = Math.max(peak, s.peakMarketCap || 0);
-
-    const improved = strength[s.status] > strength[lastNotified];
-    const importantReject = s.status === "SKIP" && lastNotified !== "NO SIGNAL";
-    if ((improved && s.status !== "NO SIGNAL") || importantReject) {
-      await notify(s);
-      lastNotified = s.status;
-    }
-    if (s.status === "SKIP") break;
+  // The deterministic hook acts as a 21-day per-mint mutex. Hourly discovery
+  // and the real-time Helius webhook can safely race without creating two
+  // long-running monitors for the same token.
+  const lock = createHook({ token: `stonk-radar:${launch.mint}` });
+  const conflict = await lock.getConflict();
+  if (conflict) {
+    return {
+      mint: launch.mint,
+      lastStatus: "NO SIGNAL",
+      checks: 0,
+      dedupedTo: conflict.runId,
+      stoppedReason: "active monitor already owns this mint",
+    };
   }
 
-  return { mint: launch.mint, lastStatus: lastNotified, peakMarketCap: peak };
+  let previous: Snapshot | undefined;
+  let peakMarketCap: number | undefined;
+  let lowMarketCap: number | undefined;
+  let lastNotified: SignalStatus = "NO SIGNAL";
+  let lastStatus: SignalStatus = "NO SIGNAL";
+  let everAlerted = false;
+  let checks = 0;
+  let stoppedReason: string | undefined;
+
+  // Allow first-trade indexers to settle. Backfilled tokens pay the same small
+  // delay, keeping the workflow shape deterministic for all start sources.
+  await sleep("20s");
+
+  for (const targetAgeMs of CHECKPOINT_AGES_MS) {
+    const currentAgeMs = previous ? previous.ageMinutes * MINUTE : Math.max(0, targetAgeMs - 20_000);
+    if (previous && targetAgeMs <= currentAgeMs + 5_000) continue;
+
+    if (previous) {
+      if (previous.status === "SKIP" || previous.status === "INVALIDATED") {
+        stoppedReason = `hard stop: ${previous.status}`;
+        break;
+      }
+      if (targetAgeMs > 20 * MINUTE && previous.ageMinutes >= 20 && !shouldTrackBuild(previous, everAlerted)) {
+        stoppedReason = "did not qualify for BUILD tracking";
+        break;
+      }
+      if (targetAgeMs > 4 * DAY && previous.ageMinutes >= 4 * 24 * 60 && !shouldTrackReawakening(previous, everAlerted)) {
+        stoppedReason = "did not qualify for REAWAKENING tracking";
+        break;
+      }
+
+      const waitMs = Math.max(0, targetAgeMs - currentAgeMs);
+      if (waitMs > 0) await sleep(waitMs);
+    }
+
+    const snapshot = await check(launch, {
+      previous,
+      peakMarketCap,
+      lowMarketCap,
+      everAlerted,
+    });
+    checks += 1;
+    peakMarketCap = snapshot.peakMarketCap;
+    lowMarketCap = snapshot.lowMarketCap;
+    lastStatus = snapshot.status;
+
+    if (shouldNotify(lastNotified, snapshot.status)) {
+      await notify(snapshot);
+      lastNotified = snapshot.status;
+      everAlerted = everAlerted || isAlertStatus(snapshot.status);
+    }
+    previous = snapshot;
+  }
+
+  return {
+    mint: launch.mint,
+    lastStatus,
+    peakMarketCap,
+    lowMarketCap,
+    checks,
+    stoppedReason,
+  };
 }

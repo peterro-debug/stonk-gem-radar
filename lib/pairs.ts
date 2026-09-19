@@ -2,14 +2,13 @@ import type { QuoteMeta } from "./types";
 import { getTokenMeta } from "./helius";
 
 export async function getQuoteMeta(mint: string): Promise<QuoteMeta> {
-  // j7tracker mirrors StonkFun's public /pairs registry every 30s and marks pairs
-  // seen in the first hour as isNew. This is enrichment only; launch detection is on-chain.
+  const base = (process.env.STONKFUN_API_BASE || "https://www.stonkfun.xyz/api/public/v1").replace(/\/$/, "");
   try {
-    const res = await fetch("https://nyc.j7tracker.io/token/stonk-pairs", { cache: "no-store" });
+    const res = await fetch(`${base}/pairs`, { headers: { accept: "application/json" }, cache: "no-store" });
     if (res.ok) {
       const body = await res.json() as any;
-      const rows = [...(body?.pairs || []), ...(body?.custom || [])];
-      const row = rows.find((x: any) => x?.mint === mint);
+      const rows: any[] = body?.data?.pairs || [];
+      const row = rows.find((candidate) => candidate?.mint === mint);
       if (row) {
         return {
           mint,
@@ -17,11 +16,12 @@ export async function getQuoteMeta(mint: string): Promise<QuoteMeta> {
           symbol: row.symbol,
           image: row.logoUrl,
           decimals: row.decimals,
-          isNewPair: Boolean(row.isNew),
           category: row.category,
         };
       }
     }
-  } catch { /* Helius fallback below */ }
+  } catch {
+    // Helius metadata is a safe fallback when the public Stonk API is slow.
+  }
   return { mint, ...(await getTokenMeta(mint)) };
 }

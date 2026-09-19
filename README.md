@@ -1,22 +1,59 @@
 # Stonk Gem Radar
 
-Event-driven scanner for newly launched StonkFun / Raydium LaunchLab tokens. The goal is **early discovery**, not a delayed trending list.
+Event-driven StonkFun / Raydium LaunchLab scanner built to find **new asymmetric movements**, not merely newly created tokens.
 
-## What it does
+## Detection model
 
-1. Helius raw webhook watches the Raydium LaunchLab program.
-2. The receiver only accepts instructions using one of StonkFun's two platform configs.
-3. New StonkFun mint = a durable Vercel Workflow.
-4. The workflow checks the launch around **T+20s, T+3m, T+7m, T+12m and T+20m**.
-5. It enriches with:
-   - exact base mint + quote mint from the launch instruction,
-   - quote metadata / `isNew` pair signal,
-   - Helius holder count and top-10 concentration (bonding-curve base vault excluded),
-   - creator balance,
-   - DexScreener market cap / liquidity / volume / buys / sells,
-   - pair-aware meme/narrative score,
-   - peak market-cap retention across the workflow.
-6. Telegram only receives meaningful state changes: `FLASH`, `EARLY WATCH`, `GEM`, `RECLAIM`, or a later `SKIP` if a previously alerted coin fails.
+The same mint can move through three scan modes:
+
+- **FLASH (0–6h):** early buyer, holder, volume, liquidity and pair-fit velocity.
+- **BUILD (6h–3d):** survival after the first pump, retention, holder breadth and sustained flow.
+- **REAWAKENING (3–21d):** renewed volume, holders/buyers, buy-side flow and price reclaim. This is the JUPCAT fix: token age no longer disqualifies a new movement.
+
+Helius starts a monitor immediately for every verified StonkFun launch. An hourly `/api/discover` pass also scans the official Stonk API's newest and volume-leading tokens, so missed webhooks and second waves are backfilled. A deterministic workflow hook permits only one active 21-day monitor per mint.
+
+Each durable monitor uses absolute-age checkpoints around T+20s, 3m, 7m, 12m, 20m, 1h, 3h, 6h, 12h, 1d, 2d, 3d, 4d, 5d, 7d, 10d, 14d, 18d and 21d. Weak launches stop early; qualified candidates continue. Every check is persisted in the Vercel Workflow event log.
+
+## Event/pair and reward intelligence
+
+The radar uses StonkFun's official public API for token, pair, graduation, peak-MC and holder-reward data. It scores these explicitly:
+
+- direct meme/name fit with the quote asset;
+- project/asset mascot fit;
+- native quote-token rewards;
+- one of the first three launches against a new/rare pair;
+- an optional `RECENT_PAIR_MINTS` event-feed override for freshly announced official pairs.
+
+This makes patterns such as `JUP mascot + JUP pair + JUP rewards` a first-class signal rather than an after-the-fact narrative observation.
+
+## Hard wallet gate
+
+RugCheck graph data is checked on every snapshot and detected AMM vaults are removed from holder concentration calculations. The optional specialist adapter adds bundle, sniper and common-funder evidence.
+
+Wallet verification has only three outcomes:
+
+- `CLEAN`: graph, bundle, sniper and common-funder checks all completed and remained below hard thresholds.
+- `RISKY`: a linked insider/bundle/sniper/funder threshold or another hard wallet risk was hit.
+- `UNKNOWN`: evidence is incomplete.
+
+**`UNKNOWN` is never treated as `CLEAN`, and cannot trigger `GEM`.** It can still produce an explicitly gated FLASH, EARLY WATCH, BUILD or REAWAKENING alert so a promising token is not silently lost.
+
+The optional `WALLET_RISK_API_URL` receives:
+
+```json
+{ "chain": "solana", "mint": "...", "launchedAt": 0 }
+```
+
+It should return explicit coverage booleans (`bundle.analyzed`, `snipers.analyzed`, `funding.analyzed`) plus `supplyPct` values. Top-level aliases such as `bundleChecked` and `bundledSupplyPct` are also accepted.
+
+## Meaningful notifications
+
+Telegram receives state transitions, not repeated snapshots. Examples:
+
+- `FLASH → EARLY WATCH → GEM`
+- `BUILD WATCH → RECLAIM`
+- `SKIP → REAWAKENING` when the hourly discovery pass starts a later monitor
+- `GEM → INVALIDATED`
 
 ## StonkFun addresses
 
@@ -24,34 +61,57 @@ Event-driven scanner for newly launched StonkFun / Raydium LaunchLab tokens. The
 - StonkFun reward config: `6BwHHDg3u1854jC8PDLXvR4spTcLNaoBxLJNGC4nTESt`
 - StonkFun standard config: `4E876qZTE9FJMrBzgVtBrSrzz2TLivB5Y5QXPjB4gZL7`
 
-For `initialize_with_token_2022`, the scanner uses the documented account layout: creator=1, platform config=3, pool=5, new mint=6, quote mint=7, base vault=8, quote vault=9.
+For `initialize_with_token_2022`, the parser uses creator=1, platform config=3, pool=5, new mint=6, quote mint=7 and vaults=8/9.
 
-## Secrets
+## Environment variables
 
-Set these in Vercel. Never commit them.
+Copy `.env.example` and set secrets in Vercel, never in GitHub.
+
+Required for live launch analysis and alerts:
 
 ```text
 HELIUS_API_KEY=
 HELIUS_WEBHOOK_AUTH_SECRET=
 TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=          # preferred once known
-TELEGRAM_USERNAME=PelleSuper
+TELEGRAM_CHAT_ID=
+CRON_SECRET=
 ```
 
-If `TELEGRAM_CHAT_ID` is temporarily absent, the bot can resolve it from recent Telegram `/start` updates matching `TELEGRAM_USERNAME`. Set the numeric chat ID afterward so delivery no longer depends on Telegram retaining the update.
+Optional:
+
+```text
+TELEGRAM_USERNAME=PelleSuper
+RADAR_ADMIN_SECRET=
+WALLET_RISK_API_URL=
+WALLET_RISK_API_KEY=
+RECENT_PAIR_MINTS=
+DISCOVERY_MAX_STARTS=25
+STONKFUN_API_BASE=https://www.stonkfun.xyz/api/public/v1
+```
+
+If `TELEGRAM_CHAT_ID` is temporarily absent, the bot can resolve it from recent Telegram `/start` updates matching `TELEGRAM_USERNAME`. Set the numeric ID afterward.
 
 ## Helius webhook
 
-Create a **raw mainnet webhook** monitoring the LaunchLab program address and point it at:
+Create a raw mainnet webhook monitoring the LaunchLab program address and point it at:
 
 ```text
 https://<deployment>/api/helius
 ```
 
-Set the webhook auth header to the same value as `HELIUS_WEBHOOK_AUTH_SECRET`.
+Use the same authorization value as `HELIUS_WEBHOOK_AUTH_SECRET`.
 
-The receiver returns 2xx quickly after starting a durable workflow. Helius retries failed deliveries, so keep the route idempotent at the provider level where possible.
+## Verification
+
+```bash
+npm install
+npm run typecheck
+npm test
+npm run build
+```
+
+Regression tests cover the original LinkedInu pattern, the JUPCAT second-wave miss, the `UNKNOWN ≠ CLEAN` rule, linked-wallet rejection and state-transition notifications.
 
 ## Security
 
-A Telegram bot token that has ever been pasted into a chat should be rotated before production. Put the replacement directly in Vercel's encrypted environment variables rather than in source code or GitHub.
+Rotate any Telegram or API token that has ever been pasted into chat. Store replacements only in encrypted Vercel environment variables.

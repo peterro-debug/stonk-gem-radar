@@ -72,6 +72,7 @@ export async function getHolderMetrics(
     top10Pct: pct(top10),
     largestPct: balances.length ? pct(balances[0][1]) : undefined,
     creatorPct: opts.creator ? pct(creatorBal) : undefined,
+    excludedPoolAccounts: excludedAccounts.size,
   };
 }
 

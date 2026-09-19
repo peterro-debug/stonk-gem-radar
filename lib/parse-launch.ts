@@ -103,6 +103,7 @@ export function parseStonkLaunches(payload: unknown): Launch[] {
         quoteMint: a[7],
         baseVault: a[8],
         quoteVault: a[9],
+        source: "helius",
       });
     }
   }
