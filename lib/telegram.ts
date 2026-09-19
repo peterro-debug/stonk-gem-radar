@@ -1,0 +1,37 @@
+const TG_API = "https://api.telegram.org";
+
+function required(name: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing ${name}`);
+  return v;
+}
+
+export async function resolveTelegramChatId(): Promise<string> {
+  if (process.env.TELEGRAM_CHAT_ID) return process.env.TELEGRAM_CHAT_ID;
+  const token = required("TELEGRAM_BOT_TOKEN");
+  const wanted = (process.env.TELEGRAM_USERNAME || "PelleSuper").replace(/^@/, "").toLowerCase();
+  const res = await fetch(`${TG_API}/bot${token}/getUpdates?limit=100`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Telegram getUpdates failed: ${res.status}`);
+  const body = await res.json() as any;
+  const updates: any[] = body.result || [];
+  for (let i = updates.length - 1; i >= 0; i--) {
+    const msg = updates[i]?.message || updates[i]?.edited_message;
+    const chat = msg?.chat;
+    if (chat?.id && String(chat?.username || "").toLowerCase() === wanted) return String(chat.id);
+  }
+  throw new Error(`No Telegram /start update found for @${wanted}`);
+}
+
+export async function sendTelegram(text: string): Promise<void> {
+  const token = required("TELEGRAM_BOT_TOKEN");
+  const chatId = await resolveTelegramChatId();
+  const res = await fetch(`${TG_API}/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Telegram send failed: ${res.status} ${detail.slice(0, 300)}`);
+  }
+}
