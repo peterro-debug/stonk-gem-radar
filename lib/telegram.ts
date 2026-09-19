@@ -13,23 +13,28 @@ export type TelegramBotInfo = {
 
 export function findTelegramChatId(updates: any[], username?: string): string | undefined {
   const wanted = username?.replace(/^@/, "").toLowerCase();
+  const privateChats: Array<{ chatId: string; username: string }> = [];
   const starts: Array<{ chatId: string; username: string }> = [];
 
   for (let i = updates.length - 1; i >= 0; i--) {
     const msg = updates[i]?.message || updates[i]?.edited_message;
     const chat = msg?.chat;
     const text = String(msg?.text || "");
-    if (!chat?.id || chat?.type !== "private" || !/^\/start(?:\s|$)/i.test(text)) continue;
+    if (!chat?.id || chat?.type !== "private") continue;
 
     const candidate = {
       chatId: String(chat.id),
       username: String(chat.username || "").toLowerCase(),
     };
     if (wanted && candidate.username === wanted) return candidate.chatId;
-    if (!starts.some((start) => start.chatId === candidate.chatId)) starts.push(candidate);
+    if (!privateChats.some((entry) => entry.chatId === candidate.chatId)) privateChats.push(candidate);
+    if (/^\/start(?:\s|$)/i.test(text) && !starts.some((entry) => entry.chatId === candidate.chatId)) {
+      starts.push(candidate);
+    }
   }
 
-  return starts.length === 1 ? starts[0].chatId : undefined;
+  if (starts.length === 1) return starts[0].chatId;
+  return privateChats.length === 1 ? privateChats[0].chatId : undefined;
 }
 
 export async function getTelegramBotInfo(): Promise<TelegramBotInfo> {
@@ -53,7 +58,7 @@ export async function resolveTelegramChatId(): Promise<string> {
   const updates: any[] = body.result || [];
   const chatId = findTelegramChatId(updates, wanted);
   if (chatId) return chatId;
-  throw new Error("No unique private Telegram /start update found");
+  throw new Error("No unique private Telegram chat update found");
 }
 
 export async function sendTelegram(text: string): Promise<void> {
