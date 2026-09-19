@@ -4,33 +4,39 @@ import { FormEvent, useState } from "react";
 
 type SetupResult = {
   ok?: boolean;
+  demo?: boolean;
   error?: string;
   missing?: string[];
   helius?: unknown;
   telegram?: unknown;
+  [key: string]: unknown;
 };
 
 export default function AdminPage() {
   const [secret, setSecret] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"setup" | "demo" | null>(null);
   const [result, setResult] = useState<SetupResult | null>(null);
 
-  async function runSetup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
+  async function runRequest(endpoint: string, action: "setup" | "demo") {
+    setBusy(action);
     setResult(null);
     try {
-      const response = await fetch("/api/admin/setup", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { authorization: `Bearer ${secret}` },
       });
       const body = await response.json() as SetupResult;
       setResult(body);
     } catch {
-      setResult({ error: "Kunne ikke kontakte oppsett-endepunktet." });
+      setResult({ demo: action === "demo", error: "Kunne ikke kontakte endepunktet." });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
+  }
+
+  async function runSetup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runRequest("/api/admin/setup", "setup");
   }
 
   return (
@@ -49,13 +55,29 @@ export default function AdminPage() {
           onChange={(event) => setSecret(event.target.value)}
           style={{ font: "inherit", padding: 10 }}
         />
-        <button type="submit" disabled={busy} style={{ font: "inherit", padding: 10, cursor: "pointer" }}>
-          {busy ? "Kobler til …" : "Koble Helius og Telegram"}
+        <button type="submit" disabled={busy !== null} style={{ font: "inherit", padding: 10, cursor: "pointer" }}>
+          {busy === "setup" ? "Kobler til …" : "Koble Helius og Telegram"}
+        </button>
+        <button
+          type="button"
+          disabled={busy !== null || !secret}
+          onClick={() => runRequest("/api/admin/demo", "demo")}
+          style={{ font: "inherit", padding: 10, cursor: "pointer" }}
+        >
+          {busy === "demo" ? "Henter og analyserer …" : "Kjør demo med ferske data"}
         </button>
       </form>
+      <p>
+        Demoen henter én aktuell StonkFun-kandidat, kjører hele analysemodellen og sender resultatet til Telegram.
+        Den kjøper ingenting og starter ingen varig overvåkning.
+      </p>
       {result && (
         <section aria-live="polite" style={{ marginTop: 24 }}>
-          <h2>{result.ok ? "Oppsett fullført" : "Oppsett trenger oppfølging"}</h2>
+          <h2>
+            {result.demo
+              ? result.ok ? "Demotest fullført" : "Demotest feilet"
+              : result.ok ? "Oppsett fullført" : "Oppsett trenger oppfølging"}
+          </h2>
           <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(result, null, 2)}</pre>
         </section>
       )}
