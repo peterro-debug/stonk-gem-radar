@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   let monitor;
   try { monitor = await ensurePairMonitor(); }
-  catch { monitor = { error: "Could not start pair monitor" }; }
+  catch (error) { monitor = { error: safeError(error) }; }
   const ok = !("error" in helius) && telegram.ok && !("error" in monitor);
   return NextResponse.json({ ok, helius, telegram, monitor }, { status: ok ? 200 : 207 });
 }
