@@ -28,7 +28,9 @@ export async function pairMonitorStatus() {
   const rawKey = await world.getEncryptionKeyForRun?.(run);
   const key = rawKey ? await importKey(rawKey) : undefined;
   const input = await hydrateDataWithKey(step.input, observabilityRevivers, key);
-  const state = Array.isArray(input) ? input[0] as PairMonitorState : undefined;
+  // Workflow stores step calls as { args, closureVars, thisVal }.
+  const args = Array.isArray(input) ? input : (input as { args?: unknown[] } | undefined)?.args;
+  const state = args?.[0] as PairMonitorState | undefined;
   if (!state || state.version !== 1 || !Array.isArray(state.events)) throw new Error("Invalid pair monitor checkpoint");
   return { status: state.checkedAt && Date.now() - state.checkedAt < 5 * 60_000 ? "active" as const : "stale" as const,
     runId: hook.runId, state };

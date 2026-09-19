@@ -13,11 +13,9 @@ it("reads a completed persisted checkpoint while a newer checkpoint is still pen
     { stepId: "last", status: "completed", stepName: "step//./workflows/pair-monitor//checkpoint" },
   ] });
   const state = { ...emptyMonitorState(), checkedAt: Date.now(), registryLastSuccessAt: Date.now() };
-  // hydrateData's plaintext form (encrypted production form is handled by SDK).
-  sdk.step.mockResolvedValue({ input: [{ ...state }] });
-  // Legacy arrays are devalue encoded, so use the installed serializer format.
+  // Match the SDK's persisted step-call envelope, not just the argument array.
   const { dehydrateStepReturnValue } = await import("@workflow/core/serialization");
-  sdk.step.mockResolvedValue({ input: await dehydrateStepReturnValue([state], "run", undefined) });
+  sdk.step.mockResolvedValue({ input: await dehydrateStepReturnValue({ args: [state], closureVars: undefined, thisVal: undefined }, "run", undefined) });
   expect(await pairMonitorStatus()).toMatchObject({ status: "active", state });
   expect(sdk.step).toHaveBeenCalledWith("run", "last");
 });
@@ -28,6 +26,6 @@ it("reports starting until the first checkpoint has completed", async () => {
 it("does not present an old checkpoint as a live feed", async () => {
   sdk.list.mockResolvedValue({ data: [{ stepId: "last", status: "completed", stepName: "step//./workflows/pair-monitor//checkpoint" }] });
   const { dehydrateStepReturnValue } = await import("@workflow/core/serialization");
-  sdk.step.mockResolvedValue({ input: await dehydrateStepReturnValue([{ ...emptyMonitorState(), checkedAt: Date.now() - 600_000 }], "run", undefined) });
+  sdk.step.mockResolvedValue({ input: await dehydrateStepReturnValue({ args: [{ ...emptyMonitorState(), checkedAt: Date.now() - 600_000 }] }, "run", undefined) });
   expect((await pairMonitorStatus()).status).toBe("stale");
 });
