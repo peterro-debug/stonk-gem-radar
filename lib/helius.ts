@@ -12,6 +12,7 @@ async function rpc(method: string, params: unknown): Promise<any> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: "stonk-radar", method, params }),
     cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`Helius RPC ${method} failed: ${res.status}`);
   const data = await res.json() as any;
@@ -76,6 +77,7 @@ export async function getHolderMetrics(
   const creatorBal = opts.creator ? owners.get(opts.creator) || 0n : 0n;
 
   return {
+    checkedAt: Date.now(),
     holders: owners.size,
     top10Pct: pct(top10),
     largestPct: balances.length ? pct(balances[0][1]) : undefined,
@@ -97,17 +99,18 @@ export async function getTraderMetrics(
   try {
     const res = await fetch(
       `https://api.helius.xyz/v0/addresses/${poolState}/transactions?api-key=${apiKey()}&limit=100`,
-      { cache: "no-store" },
+      { cache: "no-store", signal: AbortSignal.timeout(10_000) },
     );
     if (!res.ok) return {};
     const txs = await res.json() as any[];
     const buyers = new Set<string>();
     const sellers = new Set<string>();
     let swaps = 0;
+    const since = Math.max(launchedAtMs, Date.now() - 5 * 60_000);
 
     for (const tx of txs || []) {
       const ts = Number(tx?.timestamp || 0) * 1000;
-      if (ts && ts + 5_000 < launchedAtMs) continue;
+      if (!ts || ts < since) continue;
       const transfers: any[] = tx?.tokenTransfers || [];
       let touched = false;
       for (const t of transfers) {
@@ -126,6 +129,8 @@ export async function getTraderMetrics(
       if (touched) swaps += 1;
     }
     return {
+      checkedAt: Date.now(),
+      windowMinutes: 5,
       uniqueBuyers: buyers.size,
       uniqueSellers: sellers.size,
       uniqueTraders: new Set([...buyers, ...sellers]).size,

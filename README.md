@@ -32,7 +32,7 @@ The first successful registry read establishes a baseline: existing pairs are no
 
 Quote aliases and explicit associations cover Google/Alphabet → Google It/Feeling Lucky, PEPE → FEELSGOOD, and other asset motifs. Phrase boundaries prevent incidental substring matches. This is explainable rule-based matching, not a universal AI semantic model; novel jokes and image-only posts can be missed. A readable name alone is insufficient.
 
-Within 30 minutes of launch, a matching name on a newly observed pair or among its first three launches can produce a separate **TIDLIG NAVNEKANDIDAT** alert below $100k MC, or with MC explicitly unknown. Confirmed wallet risks suppress it. The alert is a hypothesis, not a GEM approval, an assertion of uniqueness, or an automatic trade. Ordinary market/risk checkpoints continue.
+Within 30 minutes of launch, a matching name on a newly observed pair or among its first three launches can produce a separate **TIDLIG NAVNEKANDIDAT** alert below $100k MC. It must pass the same mandatory checks as all other positive token alerts. Unknown market cap or incomplete security evidence suppresses it. Ordinary market/risk checkpoints continue.
 
 Optional X ingestion uses the official API with `X_BEARER_TOKEN` and the verified numeric `X_STONK_USER_ID`. It polls original posts every five minutes, establishes an initial cursor without sending historical posts, validates authors, and matches announcement wording to registered pairs. Unmatched posts are retained for 48 hours in case the pair registry updates later. Missing access, rate limits and errors are reported explicitly; configured credentials alone do not mean the feed is active. API access/usage is governed by the X account; this app does not purchase it.
 
@@ -44,19 +44,23 @@ DEX Screener valuations describe its base token. For reversed pairs (for example
 
 Incomplete holder samples and unknown pool exclusions produce `NO SIGNAL` while observation continues. In the first seven minutes a sample with fewer than 60 holders also waits for distribution to develop. After that, complete concentration data still hits the existing hard thresholds. Verified insider/bundle risks remain fatal at every age. A failed holder refresh cannot fabricate a holder-base collapse.
 
-Existing launch workflows remain pinned to their original deployment until they finish; the new code governs newly started workflows. Tests are synthetic regressions, not a historical replay proving that FEELSGOOD would have been alerted at a particular age or price.
+Existing launch workflows remain pinned to their original deployment. After deploying a policy change, authenticated `POST /api/admin/monitor` queues durable upgrades in batches of 25. Each upgrade saves the latest completed analysis, peak/low values and notification history before cancelling the old run and starting its replacement. Active analysis/delivery steps are allowed to finish first. `GET /api/admin/monitor` reports the remaining legacy runs. Tests are synthetic regressions, not a historical replay proving an alert at a particular age or price.
 
 ## Hard wallet gate
 
-RugCheck graph data is checked on every snapshot and detected AMM vaults are removed from holder concentration calculations. The optional specialist adapter adds bundle, sniper and common-funder evidence.
+RugCheck graph data is checked on every snapshot and detected AMM vaults are removed from holder concentration calculations. `SOLANA_TRACKER_API_KEY` enables the real Solana Tracker Data API: `GET /tokens/{mint}` and `GET /tokens/{mint}/bundlers`, authenticated with `x-api-key`. The dedicated bundle endpoint supplies aggregate percentages despite its capped wallet list. Missing data, mismatched token identity, stale indexed pools, 404, 429, timeout and malformed responses never imply a zero risk measurement.
+
+Solana Tracker adds bundle, sniper and insider measurements. It does **not** establish complete common-funder or fresh-wallet coverage. Those checks require a separately configured specialist source; without it, positive alerts remain blocked. Provider configuration alone is not evidence that a particular token is covered. No accounts, credits or paid upgrades are purchased by the application.
 
 Wallet verification has only three outcomes:
 
-- `CLEAN`: graph, bundle, sniper and common-funder checks all completed and remained below hard thresholds.
+- `CLEAN`: graph, bundle, sniper, common-funder, fresh-wallet and authority checks returned valid measurements and remained below hard thresholds.
 - `RISKY`: a linked insider/bundle/sniper/funder threshold or another hard wallet risk was hit.
 - `UNKNOWN`: evidence is incomplete.
 
-**`UNKNOWN` is never treated as `CLEAN`, and cannot trigger `GEM`.** It can still produce an explicitly gated FLASH, EARLY WATCH, BUILD or REAWAKENING alert so a promising token is not silently lost.
+**`UNKNOWN` blocks every positive token alert, including FLASH, EARLY WATCH, BUILD, REAWAKENING, RECLAIM, GEM and early name candidates.** Missing evidence yields `NO SIGNAL` and continued observation. A high activity/potential score cannot bypass this gate.
+
+All positive alerts additionally require narrative >= 3/5, a documented name/pair association, complete holder sampling and known pool exclusions, a measured creator balance, market cap, liquidity >= $10,000, observed volume/buy/sell flow and an on-chain buyer sample. Required observations expire after five minutes; freshness is checked again immediately before sending, including on delivery retries. Buyer counts describe the most recent 100 pool transactions within five minutes, not a complete census. Fetch timestamps are observation times, not guarantees about the upstream indexer's latency. Risk warnings for previously alerted tokens bypass the positive-alert gate. A score out of 100 describes activity/potential, not a probability or security rating.
 
 The optional `WALLET_RISK_API_URL` receives:
 
@@ -64,7 +68,7 @@ The optional `WALLET_RISK_API_URL` receives:
 { "chain": "solana", "mint": "...", "launchedAt": 0 }
 ```
 
-It should return explicit coverage booleans (`bundle.analyzed`, `snipers.analyzed`, `funding.analyzed`) plus `supplyPct` values. Top-level aliases such as `bundleChecked` and `bundledSupplyPct` are also accepted.
+It must return the matching `mint`, a fresh `checkedAt` Unix timestamp in milliseconds, explicit coverage booleans (`bundle.analyzed`, `snipers.analyzed`, `funding.analyzed`) and actual `supplyPct` values between 0 and 100. Top-level aliases such as `bundleChecked` and `bundledSupplyPct` are also accepted. `freshWalletSupplyPct` is required. An `analyzed: true` flag without its measurement is incomplete. Missing authority fields are never interpreted as revoked.
 
 ## Meaningful notifications
 

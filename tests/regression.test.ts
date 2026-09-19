@@ -17,6 +17,10 @@ function wallet(verification: WalletVerification): WalletRiskMetrics {
     fundingChecked: verification === "CLEAN",
     graphInsiderWallets: verification === "RISKY" ? 40 : 0,
     insiderSupplyPct: verification === "RISKY" ? 9 : 0,
+    bundledSupplyPct: verification === "CLEAN" ? 0 : undefined,
+    sniperSupplyPct: verification === "CLEAN" ? 0 : undefined,
+    commonFunderSupplyPct: verification === "CLEAN" ? 0 : undefined,
+    freshWalletSupplyPct: verification === "CLEAN" ? 0 : undefined,
     mintAuthorityRevoked: true,
     freezeAuthorityRevoked: true,
     flags: verification === "RISKY" ? ["40 linked insider wallets detected"] : verification === "UNKNOWN" ? ["verification incomplete: bundle, sniper, common-funder"] : [],
@@ -46,6 +50,7 @@ function base(overrides: Partial<Base> = {}): Base {
     token: { name: "LinkedInu", symbol: "LINKEDINU" },
     quote: { mint: "quote", name: "LinkedIn", symbol: "LNKDX", isFirstMover: true, isNewPair: true, launchRank: 1 },
     pair: {
+      checkedAt: Date.now(),
       marketCap: 220_000,
       liquidityUsd: 80_000,
       volume5m: 55_000,
@@ -57,8 +62,8 @@ function base(overrides: Partial<Base> = {}): Base {
       sells1h: 700,
       priceChange24h: 95,
     },
-    holders: { holders: 520, top10Pct: 18, creatorPct: 0.5 },
-    traders: { uniqueBuyers: 240, uniqueSellers: 130, uniqueTraders: 310, sampledSwaps: 400 },
+    holders: { checkedAt: Date.now(), sampleComplete: true, poolExclusionKnown: true, holders: 520, top10Pct: 18, creatorPct: 0.5 },
+    traders: { checkedAt: Date.now(), uniqueBuyers: 240, uniqueSellers: 130, uniqueTraders: 310, sampledSwaps: 400 },
     rewards: {
       mode: "reward",
       transferFeeBps: 300,
@@ -122,7 +127,7 @@ describe("LinkedInu/JUPCAT regression gates", () => {
     expect(result.risks.join(" ")).toContain("linked insider wallets");
   });
 
-  it("surfaces JUPCAT as REAWAKENING even when it is no longer a fresh launch", () => {
+  it("keeps JUPCAT under observation until security checks are complete", () => {
     const narrative = narrativeScore(
       { name: "Jupiter Cat", symbol: "JUPCAT" },
       { mint: "JUP", name: "Jupiter", symbol: "JUP", launchCount: 529 },
@@ -154,7 +159,7 @@ describe("LinkedInu/JUPCAT regression gates", () => {
     const result = classify(jupcat);
     expect(narrative.mascotFit).toBe(true);
     expect(narrative.rewardFit).toBe(true);
-    expect(result.status).toBe("REAWAKENING");
+    expect(result.status).toBe("NO SIGNAL");
   });
 
   it("notifies on SKIP to REAWAKENING and GEM to INVALIDATED transitions", () => {

@@ -29,23 +29,24 @@ function mergeToken(primary: TokenMeta, fallback: TokenMeta): TokenMeta {
 }
 
 export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {}): Promise<Snapshot> {
-  const [stonk, dexPair, wallet, heliusToken, quoteFallback, traders] = await Promise.all([
+  const [stonk, dexPair, wallet, heliusToken, quoteFallback] = await Promise.all([
     getStonkContext(launch.mint, launch.quoteMint),
     getPairMetrics(launch.mint, launch.quoteMint),
     getWalletRiskMetrics(launch.mint, launch.launchedAt),
     getTokenMeta(launch.mint),
     getQuoteMeta(launch.quoteMint),
-    getTraderMetrics(launch.poolState, launch.mint, launch.baseVault, launch.launchedAt),
   ]);
 
   const excludedTokenAccounts = [
     launch.baseVault,
     ...wallet.excludedTokenAccounts,
   ].filter((value): value is string => Boolean(value));
-  const holders = await getHolderMetrics(launch.mint, {
+  const [holders, traders] = await Promise.all([getHolderMetrics(launch.mint, {
     creator: launch.creator,
     excludeTokenAccounts: [...new Set(excludedTokenAccounts)],
-  }).catch(() => ({ holders: 0, sampleComplete: false, poolExclusionKnown: excludedTokenAccounts.length > 0 }));
+  }).catch(() => ({ holders: 0, sampleComplete: false, poolExclusionKnown: excludedTokenAccounts.length > 0 })),
+    getTraderMetrics(launch.poolState, launch.mint, launch.baseVault || excludedTokenAccounts[0], launch.launchedAt),
+  ]);
 
   const now = Date.now();
   const ageMinutes = Math.max(0, (now - launch.launchedAt) / 60_000);
@@ -69,6 +70,7 @@ export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {
     quote.isNewPair = true;
   }
   const pair = mergeDefined<PairMetrics>(stonk.pair, dexPair);
+  if (Object.keys(pair).length) pair.checkedAt = now;
   const marketCap = pair.marketCap ?? pair.fdv;
   const peakMarketCap = Math.max(
     context.peakMarketCap || 0,

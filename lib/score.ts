@@ -1,5 +1,6 @@
 import { isAlertStatus } from "./transitions";
 import type { SignalStatus, Snapshot } from "./types";
+import { positiveAlertBlockers, walletThresholdRisks } from "./alert-policy";
 
 type SnapshotBase = Omit<Snapshot, "score" | "status" | "reasons" | "risks">;
 
@@ -13,6 +14,7 @@ export function classify(
   const reasons: string[] = [];
   const risks: string[] = [];
   const fatal: string[] = [];
+  fatal.push(...walletThresholdRisks(s.wallet));
   let score = 0;
 
   const mc = p.marketCap ?? p.fdv ?? 0;
@@ -80,7 +82,7 @@ export function classify(
   } else if (s.wallet.verification === "RISKY") {
     fatal.push(...(s.wallet.flags.length ? s.wallet.flags : ["wallet gate RISKY"]));
   } else {
-    risks.push("wallet gate UNKNOWN — cannot become GEM");
+    risks.push("wallet gate UNKNOWN — all positive alerts blocked");
     risks.push(...s.wallet.flags.slice(0, 2));
   }
 
@@ -111,6 +113,10 @@ export function classify(
 
   if (holdersPending) return { score: rawScore, status: "NO SIGNAL", reasons, risks: [...new Set(risks)] };
 
+  const blockers = positiveAlertBlockers(s);
+  if (blockers.length) return { score: rawScore, status: "NO SIGNAL", reasons,
+    risks: [...new Set([...risks, `Awaiting required checks: ${blockers.join("; ")}`])] };
+
   let status: SignalStatus = "NO SIGNAL";
   const walletPassed = s.wallet.verification === "CLEAN";
   const retentionOkay = s.retention == null || s.retention >= 0.45;
@@ -123,7 +129,7 @@ export function classify(
       && (p.volume24h || 0) >= 50_000
       && h.holders >= 150
       && liq >= 10_000
-      && s.narrative.score >= 2;
+      && s.narrative.score >= 3;
 
     if (reawakeningQualified) status = "REAWAKENING";
     const trackedReclaim = Boolean(prior) && (

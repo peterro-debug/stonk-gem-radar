@@ -1,4 +1,5 @@
 import type { Snapshot } from "./types";
+import { positiveAlertBlockers } from "./alert-policy";
 
 const money = (n?: number) => n == null ? "n/a" : n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1_000).toFixed(0)}k` : `$${n.toFixed(0)}`;
 const pct = (n?: number) => n == null ? "n/a" : `${n.toFixed(1)}%`;
@@ -34,16 +35,20 @@ export function formatAlert(s: Snapshot): string {
   const lines = [
     `${icon} STONK ${s.status} — ${s.mode} — ${ageLabel(s.ageMinutes)} OLD`,
     `${name}${symbol}`,
+    s.status === "INVALIDATED" ? "RISIKOVARSEL — tidligere signal er ugyldig"
+      : positiveAlertBlockers(s).length ? "UAVKLART — obligatoriske kontroller mangler"
+      : "Obligatoriske kontroller bestått ved siste sjekk",
     `Mint: ${s.launch.mint}`,
     `Pair: ${quote}${pairTag}`,
     `MC: ${money(p.marketCap ?? p.fdv)} | Peak: ${money(s.peakMarketCap)} | Retention: ${retention}`,
     `Vol 5m/1h/24h: ${money(p.volume5m)} / ${money(p.volume1h)} / ${money(p.volume24h)}`,
     `Liquidity: ${money(p.liquidityUsd)} | 24h price: ${pct(p.priceChange24h)}`,
     `Buys/Sells 5m: ${p.buys5m ?? "n/a"}/${p.sells5m ?? "n/a"} | 1h: ${p.buys1h ?? "n/a"}/${p.sells1h ?? "n/a"}`,
-    `Holders: ${h.holders} | Unique buyers: ${t.uniqueBuyers ?? "n/a"} | Traders: ${t.uniqueTraders ?? "n/a"}`,
+    `Holders: ${h.holders} | Unique buyers (5m sample): ${t.uniqueBuyers ?? "n/a"} | Traders: ${t.uniqueTraders ?? "n/a"}`,
     `Top10: ${pct(h.top10Pct)} | Dev: ${pct(h.creatorPct)}`,
     `Wallet gate: ${s.wallet.verification} (${s.wallet.provider})`,
     `Graph/bundle/sniper/funder: ${s.wallet.graphChecked ? "✓" : "?"}/${s.wallet.bundleChecked ? "✓" : "?"}/${s.wallet.sniperChecked ? "✓" : "?"}/${s.wallet.fundingChecked ? "✓" : "?"}`,
+    `Bundle/sniper/funder/fresh supply: ${pct(s.wallet.bundledSupplyPct)}/${pct(s.wallet.sniperSupplyPct)}/${pct(s.wallet.commonFunderSupplyPct)}/${pct(s.wallet.freshWalletSupplyPct)}`,
     `Narrative: ${s.narrative.score}/5 — ${s.narrative.reason}`,
   ];
 
@@ -59,7 +64,7 @@ export function formatAlert(s: Snapshot): string {
     lines.push(`24h volume vs prior check: ${multiple(s.trend.volume24hAcceleration)}`);
   }
   lines.push(
-    `LinkedInu score: ${s.score}/100`,
+    `Aktivitet og potensial: ${s.score}/100 (ikke en sikkerhetsscore)`,
     s.risks.length ? `Risks: ${s.risks.slice(0, 4).join("; ")}` : "Risks: none triggered",
   );
   return lines.join("\n");

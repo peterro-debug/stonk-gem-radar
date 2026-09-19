@@ -1,5 +1,8 @@
 import { WALLET_LIMITS } from "./constants";
 import type { WalletRiskMetrics } from "./types";
+import { getSolanaTrackerEvidence } from "./solana-tracker";
+import { authorityRevoked, count, isFresh, percentage } from "./risk-validation";
+import { missingWalletChecks, walletThresholdRisks } from "./alert-policy";
 
 function n(value: unknown): number | undefined {
   if (value == null || value === "" || typeof value === "boolean") return undefined;
@@ -16,6 +19,7 @@ async function rugCheckReport(mint: string): Promise<any | undefined> {
     const res = await fetch(`https://api.rugcheck.xyz/v1/tokens/${encodeURIComponent(mint)}/report`, {
       headers: { accept: "application/json" },
       cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return undefined;
     return await res.json();
@@ -40,6 +44,7 @@ async function specialistReport(mint: string, launchedAt: number): Promise<any |
       headers,
       body: JSON.stringify({ chain: "solana", mint, launchedAt }),
       cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return undefined;
     return await res.json();
@@ -58,35 +63,49 @@ function poolTokenAccounts(report: any, mint: string): string[] {
 }
 
 function specialistNumber(report: any, key: string, nestedKey: string): number | undefined {
-  return n(report?.[key]) ?? n(report?.[nestedKey]?.supplyPct) ?? n(report?.[nestedKey]?.pct);
+  return percentage(report?.[key]) ?? percentage(report?.[nestedKey]?.supplyPct) ?? percentage(report?.[nestedKey]?.pct);
 }
 
 export async function getWalletRiskMetrics(mint: string, launchedAt: number): Promise<WalletRiskMetrics> {
-  const [rug, specialist] = await Promise.all([
+  const [rugResponse, specialistResponse, tracker] = await Promise.all([
     rugCheckReport(mint),
     specialistReport(mint, launchedAt),
+    getSolanaTrackerEvidence(mint),
   ]);
+  const now = Date.now();
+  const rug = rugResponse?.mint === mint ? rugResponse : undefined;
+  const specialist = specialistResponse?.mint === mint && isFresh(specialistResponse?.checkedAt, now)
+    ? specialistResponse : undefined;
+  const max = (...values: Array<number | undefined>) => {
+    const valid = values.filter((v): v is number => v != null);
+    return valid.length ? Math.max(...valid) : undefined;
+  };
 
   const flags: string[] = [];
   const supply = n(rug?.token?.supply);
   const networks: any[] = Array.isArray(rug?.insiderNetworks) ? rug.insiderNetworks : [];
   const insiderRaw = networks.reduce((sum, network) => sum + (n(network?.tokenAmount) || 0), 0);
-  const graphInsiderWallets = n(rug?.graphInsidersDetected);
-  const insiderSupplyPct = supply && supply > 0 ? (insiderRaw / supply) * 100 : undefined;
-  const graphChecked = graphInsiderWallets != null || bool(specialist?.graphChecked) || bool(specialist?.graph?.analyzed);
+  const graphInsiderWallets = count(rug?.graphInsidersDetected);
+  const networkComplete = Array.isArray(rug?.insiderNetworks) && networks.every(network => n(network?.tokenAmount) != null && n(network.tokenAmount)! >= 0);
+  const rugInsiderPct = supply && supply > 0 && networkComplete ? percentage((insiderRaw / supply) * 100) : undefined;
+  const insiderSupplyPct = max(rugInsiderPct, tracker.insiderSupplyPct, percentage(specialist?.insiderSupplyPct));
+  const graphChecked = (graphInsiderWallets != null && rugInsiderPct != null)
+    || tracker.insiderSupplyPct != null
+    || ((bool(specialist?.graphChecked) || bool(specialist?.graph?.analyzed)) && percentage(specialist?.insiderSupplyPct) != null);
 
-  const bundledSupplyPct = specialistNumber(specialist, "bundledSupplyPct", "bundle");
-  const sniperSupplyPct = specialistNumber(specialist, "sniperSupplyPct", "snipers");
+  const bundledSupplyPct = max(specialistNumber(specialist, "bundledSupplyPct", "bundle"), tracker.bundledSupplyPct);
+  const sniperSupplyPct = max(specialistNumber(specialist, "sniperSupplyPct", "snipers"), tracker.sniperSupplyPct);
   const commonFunderSupplyPct = specialistNumber(specialist, "commonFunderSupplyPct", "funding");
   const freshWalletSupplyPct = specialistNumber(specialist, "freshWalletSupplyPct", "freshWallets");
-  const bundleChecked = bool(specialist?.bundleChecked) || bool(specialist?.bundle?.analyzed);
-  const sniperChecked = bool(specialist?.sniperChecked) || bool(specialist?.snipers?.analyzed);
-  const fundingChecked = bool(specialist?.fundingChecked) || bool(specialist?.funding?.analyzed);
+  const bundleChecked = tracker.bundledSupplyPct != null || ((bool(specialist?.bundleChecked) || bool(specialist?.bundle?.analyzed)) && bundledSupplyPct != null);
+  const sniperChecked = tracker.sniperSupplyPct != null || ((bool(specialist?.sniperChecked) || bool(specialist?.snipers?.analyzed)) && sniperSupplyPct != null);
+  // Insider detection is not proof that all early buyers' funding paths were checked.
+  const fundingChecked = (bool(specialist?.fundingChecked) || bool(specialist?.funding?.analyzed)) && commonFunderSupplyPct != null;
 
   const rugRiskRows: any[] = Array.isArray(rug?.risks) ? rug.risks : [];
   for (const risk of rugRiskRows) {
     const level = String(risk?.level || "").toLowerCase();
-    if (level === "danger" || level === "warn") {
+    if (level === "danger" || level === "warn" || level === "warning") {
       flags.push(`RugCheck ${level}: ${risk?.name || risk?.description || "risk"}`);
     }
   }
@@ -111,28 +130,19 @@ export async function getWalletRiskMetrics(mint: string, launchedAt: number): Pr
     flags.push(`fresh-wallet cluster ${freshWalletSupplyPct?.toFixed(1)}%`);
   }
 
-  const risky = flags.length > 0;
-  const complete = graphChecked && bundleChecked && sniperChecked && fundingChecked;
-  const verification = risky ? "RISKY" : complete ? "CLEAN" : "UNKNOWN";
-  if (!complete && !risky) {
-    const missing = [
-      !graphChecked && "graph",
-      !bundleChecked && "bundle",
-      !sniperChecked && "sniper",
-      !fundingChecked && "common-funder",
-    ].filter(Boolean).join(", ");
-    flags.push(`verification incomplete: ${missing}`);
-  }
-
-  return {
-    verification,
-    provider: specialist ? "RugCheck + specialist gateway" : "RugCheck",
-    checkedAt: Date.now(),
+  const authority = (field: string, trackerValue: boolean | undefined) => {
+    const values = [authorityRevoked(rug?.token, field), authorityRevoked(rug, field), trackerValue];
+    return values.includes(false) ? false : values.includes(true) ? true : undefined;
+  };
+  const result: WalletRiskMetrics = {
+    verification: "UNKNOWN",
+    provider: ["RugCheck", tracker.checkedAt && "Solana Tracker", specialist && "specialist gateway"].filter(Boolean).join(" + "),
+    checkedAt: Math.min(now, tracker.checkedAt ?? now, specialist?.checkedAt ?? now),
     graphChecked,
     bundleChecked,
     sniperChecked,
     fundingChecked,
-    rugged: rug?.rugged,
+    rugged: rug?.rugged === true || tracker.rugged === true,
     rugcheckScore: n(rug?.score_normalised) ?? n(rug?.score),
     graphInsiderWallets,
     insiderSupplyPct,
@@ -140,9 +150,19 @@ export async function getWalletRiskMetrics(mint: string, launchedAt: number): Pr
     sniperSupplyPct,
     commonFunderSupplyPct,
     freshWalletSupplyPct,
-    mintAuthorityRevoked: rug ? (rug?.token?.mintAuthority ?? rug?.mintAuthority) == null : undefined,
-    freezeAuthorityRevoked: rug ? (rug?.token?.freezeAuthority ?? rug?.freezeAuthority) == null : undefined,
+    mintAuthorityRevoked: authority("mintAuthority", tracker.mintAuthorityRevoked),
+    freezeAuthorityRevoked: authority("freezeAuthority", tracker.freezeAuthorityRevoked),
     flags,
     excludedTokenAccounts: poolTokenAccounts(rug, mint),
+    initialBundledSupplyPct: tracker.initialBundledSupplyPct,
+    trackerStatus: tracker.status,
+    trackerError: tracker.error,
+    trackerRiskScore: tracker.riskScore,
   };
+  flags.push(...tracker.flags, ...walletThresholdRisks(result));
+  const missing = missingWalletChecks(result, now);
+  result.verification = flags.length ? "RISKY" : missing.length ? "UNKNOWN" : "CLEAN";
+  result.flags = [...new Set(flags)];
+  if (result.verification === "UNKNOWN") result.flags.push(`verification incomplete: ${missing.join(", ")}`);
+  return result;
 }

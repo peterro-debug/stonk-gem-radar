@@ -60,7 +60,7 @@ export default function AdminPage() {
         </button>
         <button type="button" disabled={busy !== null || !secret}
           onClick={() => runRequest("/api/admin/monitor", "monitor")} style={{ font: "inherit", padding: 10 }}>
-          {busy === "monitor" ? "Starter …" : "Start overvåkning av nye par"}
+          {busy === "monitor" ? "Oppdaterer …" : "Start og oppdater overvåkninger"}
         </button>
         <button type="button" disabled={busy !== null || !secret}
           onClick={() => runRequest("/api/admin/monitor", "status")} style={{ font: "inherit", padding: 10 }}>
@@ -80,7 +80,8 @@ export default function AdminPage() {
         Den kjøper ingenting og starter ingen varig overvåkning.
       </p>
       <p>Parregisteret sjekkes omtrent hvert minutt. X krever egen lesetilgang; status viser siste vellykkede innhenting.
-        Tidlige navnekandidater er hypoteser og gjennomgår fortsatt markeds- og risikosjekker.</p>
+        Positive tokenvarsler krever minst 3/5, tydelig parring og komplette sikkerhetssjekker.
+        Manglende data holder kandidaten tilbake. Oppdatering flytter eldre overvåkninger med historikken bevart.</p>
       {result && (
         <section aria-live="polite" style={{ marginTop: 24 }}>
           <h2>

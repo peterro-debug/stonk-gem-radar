@@ -1,25 +1,30 @@
-import { createHook, sleep } from "workflow";
-import type { AnalysisContext, Launch, RadarRunResult, SignalStatus, Snapshot } from "@/lib/types";
+import { createHook, sleep, FatalError } from "workflow";
+import type { AnalysisContext, Launch, LaunchMonitorSeed, RadarRunResult, SignalStatus, Snapshot } from "@/lib/types";
 import { CHECKPOINT_AGES_MS, DAY, MINUTE } from "@/lib/constants";
 import { analyzeLaunch } from "@/lib/analyze";
 import { formatAlert } from "@/lib/format";
 import { sendTelegram } from "@/lib/telegram";
 import { isAlertStatus, shouldNotify } from "@/lib/transitions";
 import { formatCandidate, isEarlyNameCandidate } from "@/lib/candidate";
+import { maySendAlert, positiveAlertBlockers } from "@/lib/alert-policy";
 
 async function check(launch: Launch, context: AnalysisContext): Promise<Snapshot> {
   "use step";
   return analyzeLaunch(launch, context);
 }
 
-async function notify(snapshot: Snapshot): Promise<void> {
+async function notify(snapshot: Snapshot, everAlerted: boolean): Promise<boolean> {
   "use step";
+  if (!maySendAlert(snapshot, everAlerted)) return false;
   await sendTelegram(formatAlert(snapshot));
+  return true;
 }
 
-async function notifyCandidate(snapshot: Snapshot): Promise<void> {
+async function notifyCandidate(snapshot: Snapshot): Promise<boolean> {
   "use step";
+  if (positiveAlertBlockers(snapshot, Date.now()).length) return false;
   await sendTelegram(formatCandidate(snapshot));
+  return true;
 }
 
 export function shouldTrackBuild(snapshot: Snapshot, everAlerted: boolean): boolean {
@@ -41,32 +46,34 @@ export function shouldTrackReawakening(snapshot: Snapshot, everAlerted: boolean)
     || snapshot.score >= 60;
 }
 
-export async function launchWorkflow(launch: Launch): Promise<RadarRunResult> {
+export async function launchWorkflow(launch: Launch, seed?: LaunchMonitorSeed, predecessor?: string): Promise<RadarRunResult> {
   "use workflow";
 
   // The deterministic hook acts as a 21-day per-mint mutex. Hourly discovery
   // and the real-time Helius webhook can safely race without creating two
   // long-running monitors for the same token.
-  const lock = createHook({ token: `stonk-radar:${launch.mint}` });
-  const conflict = await lock.getConflict();
-  if (conflict) {
-    return {
-      mint: launch.mint,
-      lastStatus: "NO SIGNAL",
-      checks: 0,
-      dedupedTo: conflict.runId,
-      stoppedReason: "active monitor already owns this mint",
-    };
+  let lock;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    lock = createHook({ token: `stonk-radar:${launch.mint}` });
+    const conflict = await lock.getConflict();
+    if (!conflict) break;
+    lock.dispose();
+    lock = undefined;
+    if (conflict.runId !== predecessor) return { mint: launch.mint, lastStatus: "NO SIGNAL", checks: 0,
+      dedupedTo: conflict.runId, stoppedReason: "active monitor already owns this mint" };
+    await sleep("2s");
   }
+  if (!lock) throw new FatalError("Previous monitor did not release its lock");
 
-  let previous: Snapshot | undefined;
-  let peakMarketCap: number | undefined;
-  let lowMarketCap: number | undefined;
-  let lastNotified: SignalStatus = "NO SIGNAL";
+  let previous = seed?.previous;
+  let peakMarketCap = seed?.peakMarketCap;
+  let lowMarketCap = seed?.lowMarketCap;
+  let lastNotified: SignalStatus = seed?.lastNotified ?? "NO SIGNAL";
   let lastStatus: SignalStatus = "NO SIGNAL";
-  let everAlerted = false;
-  let candidateNotified = false;
-  let checks = 0;
+  let everAlerted = seed?.everAlerted ?? false;
+  let candidateNotified = seed?.candidateNotified ?? false;
+  let checks = seed?.checks ?? 0;
+  let forceCheck = Boolean(seed);
   let stoppedReason: string | undefined;
 
   // Allow first-trade indexers to settle. Backfilled tokens pay the same small
@@ -75,7 +82,7 @@ export async function launchWorkflow(launch: Launch): Promise<RadarRunResult> {
 
   for (const targetAgeMs of CHECKPOINT_AGES_MS) {
     const currentAgeMs = previous ? previous.ageMinutes * MINUTE : Math.max(0, targetAgeMs - 20_000);
-    if (previous && targetAgeMs <= currentAgeMs + 5_000) continue;
+    if (!forceCheck && previous && targetAgeMs <= currentAgeMs + 5_000) continue;
 
     if (previous) {
       if (previous.status === "SKIP" || previous.status === "INVALIDATED") {
@@ -92,8 +99,9 @@ export async function launchWorkflow(launch: Launch): Promise<RadarRunResult> {
       }
 
       const waitMs = Math.max(0, targetAgeMs - currentAgeMs);
-      if (waitMs > 0) await sleep(waitMs);
+      if (!forceCheck && waitMs > 0) await sleep(waitMs);
     }
+    forceCheck = false;
 
     const snapshot = await check(launch, {
       previous,
@@ -107,14 +115,17 @@ export async function launchWorkflow(launch: Launch): Promise<RadarRunResult> {
     lastStatus = snapshot.status;
 
     if (!candidateNotified && isEarlyNameCandidate(snapshot) && !isAlertStatus(snapshot.status)) {
-      await notifyCandidate(snapshot);
-      candidateNotified = true;
+      if (await notifyCandidate(snapshot)) {
+        candidateNotified = true;
+        everAlerted = true;
+      }
     }
 
-    if (shouldNotify(lastNotified, snapshot.status)) {
-      await notify(snapshot);
-      lastNotified = snapshot.status;
-      everAlerted = everAlerted || isAlertStatus(snapshot.status);
+    if (shouldNotify(lastNotified, snapshot.status) || (everAlerted && snapshot.status === "INVALIDATED" && lastNotified === "NO SIGNAL")) {
+      if (await notify(snapshot, everAlerted)) {
+        lastNotified = snapshot.status;
+        everAlerted = everAlerted || isAlertStatus(snapshot.status);
+      }
     }
     previous = snapshot;
   }

@@ -34,6 +34,7 @@ export type PairEvent = {
 };
 
 export type PairMetrics = {
+  checkedAt?: number;
   pairAddress?: string;
   dexId?: string;
   priceUsd?: number;
@@ -59,6 +60,7 @@ export type PairMetrics = {
 };
 
 export type HolderMetrics = {
+  checkedAt?: number;
   holders: number;
   top10Pct?: number;
   largestPct?: number;
@@ -70,6 +72,8 @@ export type HolderMetrics = {
 };
 
 export type TraderMetrics = {
+  checkedAt?: number;
+  windowMinutes?: number;
   uniqueBuyers?: number;
   uniqueSellers?: number;
   uniqueTraders?: number;
@@ -138,6 +142,10 @@ export type WalletRiskMetrics = {
   freezeAuthorityRevoked?: boolean;
   flags: string[];
   excludedTokenAccounts: string[];
+  initialBundledSupplyPct?: number;
+  trackerStatus?: string;
+  trackerError?: string;
+  trackerRiskScore?: number;
 };
 
 export type NarrativeMetrics = {
@@ -190,6 +198,12 @@ export type AnalysisContext = {
   peakMarketCap?: number;
   lowMarketCap?: number;
   everAlerted?: boolean;
+};
+
+export type LaunchMonitorSeed = AnalysisContext & {
+  lastNotified?: SignalStatus;
+  candidateNotified?: boolean;
+  checks?: number;
 };
 
 export type RadarRunResult = {
