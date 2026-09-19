@@ -10,7 +10,7 @@ The same mint can move through three scan modes:
 - **BUILD (6h–3d):** survival after the first pump, retention, holder breadth and sustained flow.
 - **REAWAKENING (3–21d):** renewed volume, holders/buyers, buy-side flow and price reclaim. This is the JUPCAT fix: token age no longer disqualifies a new movement.
 
-Helius starts a monitor immediately for every verified StonkFun launch. An hourly `/api/discover` pass also scans the official Stonk API's newest and volume-leading tokens, so missed webhooks and second waves are backfilled. A deterministic workflow hook permits only one active 21-day monitor per mint.
+Helius starts a monitor immediately for every verified StonkFun launch. A daily `/api/discover` pass on Vercel Hobby also scans the official Stonk API's newest and volume-leading tokens, so missed webhooks and second waves are backfilled. Upgrade Vercel or use an external scheduler if hourly discovery is required. A deterministic workflow hook permits only one active 21-day monitor per mint.
 
 Each durable monitor uses absolute-age checkpoints around T+20s, 3m, 7m, 12m, 20m, 1h, 3h, 6h, 12h, 1d, 2d, 3d, 4d, 5d, 7d, 10d, 14d, 18d and 21d. Weak launches stop early; qualified candidates continue. Every check is persisted in the Vercel Workflow event log.
 
@@ -52,7 +52,7 @@ Telegram receives state transitions, not repeated snapshots. Examples:
 
 - `FLASH → EARLY WATCH → GEM`
 - `BUILD WATCH → RECLAIM`
-- `SKIP → REAWAKENING` when the hourly discovery pass starts a later monitor
+- `SKIP → REAWAKENING` when the scheduled discovery pass starts a later monitor
 - `GEM → INVALIDATED`
 
 ## StonkFun addresses

@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/discover",
-      "schedule": "5 * * * *"
+      "schedule": "5 5 * * *"
     }
   ]
 }
