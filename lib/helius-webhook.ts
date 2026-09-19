@@ -1,6 +1,6 @@
 import { LAUNCHLAB_PROGRAM } from "@/lib/constants";
 
-const HELIUS_WEBHOOKS_URL = "https://api-mainnet.helius-rpc.com/v0/webhooks";
+const HELIUS_WEBHOOKS_URL = "https://mainnet.helius-rpc.com/v0/webhooks";
 
 export type HeliusWebhook = {
   webhookID?: string;

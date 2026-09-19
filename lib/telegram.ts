@@ -11,6 +11,27 @@ export type TelegramBotInfo = {
   username: string;
 };
 
+export function findTelegramChatId(updates: any[], username?: string): string | undefined {
+  const wanted = username?.replace(/^@/, "").toLowerCase();
+  const starts: Array<{ chatId: string; username: string }> = [];
+
+  for (let i = updates.length - 1; i >= 0; i--) {
+    const msg = updates[i]?.message || updates[i]?.edited_message;
+    const chat = msg?.chat;
+    const text = String(msg?.text || "");
+    if (!chat?.id || chat?.type !== "private" || !/^\/start(?:\s|$)/i.test(text)) continue;
+
+    const candidate = {
+      chatId: String(chat.id),
+      username: String(chat.username || "").toLowerCase(),
+    };
+    if (wanted && candidate.username === wanted) return candidate.chatId;
+    if (!starts.some((start) => start.chatId === candidate.chatId)) starts.push(candidate);
+  }
+
+  return starts.length === 1 ? starts[0].chatId : undefined;
+}
+
 export async function getTelegramBotInfo(): Promise<TelegramBotInfo> {
   const token = required("TELEGRAM_BOT_TOKEN");
   const res = await fetch(`${TG_API}/bot${token}/getMe`, { cache: "no-store" });
@@ -25,17 +46,14 @@ export async function getTelegramBotInfo(): Promise<TelegramBotInfo> {
 export async function resolveTelegramChatId(): Promise<string> {
   if (process.env.TELEGRAM_CHAT_ID) return process.env.TELEGRAM_CHAT_ID;
   const token = required("TELEGRAM_BOT_TOKEN");
-  const wanted = (process.env.TELEGRAM_USERNAME || "PelleSuper").replace(/^@/, "").toLowerCase();
+  const wanted = process.env.TELEGRAM_USERNAME || "PelleSuper";
   const res = await fetch(`${TG_API}/bot${token}/getUpdates?limit=100`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Telegram getUpdates failed: ${res.status}`);
   const body = await res.json() as any;
   const updates: any[] = body.result || [];
-  for (let i = updates.length - 1; i >= 0; i--) {
-    const msg = updates[i]?.message || updates[i]?.edited_message;
-    const chat = msg?.chat;
-    if (chat?.id && String(chat?.username || "").toLowerCase() === wanted) return String(chat.id);
-  }
-  throw new Error(`No Telegram /start update found for @${wanted}`);
+  const chatId = findTelegramChatId(updates, wanted);
+  if (chatId) return chatId;
+  throw new Error("No unique private Telegram /start update found");
 }
 
 export async function sendTelegram(text: string): Promise<void> {
