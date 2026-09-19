@@ -116,3 +116,5 @@ Regression tests cover the original LinkedInu pattern, the JUPCAT second-wave mi
 ## Security
 
 Rotate any Telegram or API token that has ever been pasted into chat. Store replacements only in encrypted Vercel environment variables.
+
+<!-- Vercel production deployment configured 2026-09-19 -->
