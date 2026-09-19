@@ -73,15 +73,15 @@ Required for live launch analysis and alerts:
 HELIUS_API_KEY=
 HELIUS_WEBHOOK_AUTH_SECRET=
 TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
 CRON_SECRET=
+RADAR_ADMIN_SECRET=
 ```
 
 Optional:
 
 ```text
 TELEGRAM_USERNAME=PelleSuper
-RADAR_ADMIN_SECRET=
+TELEGRAM_CHAT_ID=
 WALLET_RISK_API_URL=
 WALLET_RISK_API_KEY=
 RECENT_PAIR_MINTS=
@@ -91,15 +91,16 @@ STONKFUN_API_BASE=https://www.stonkfun.xyz/api/public/v1
 
 If `TELEGRAM_CHAT_ID` is temporarily absent, the bot can resolve it from recent Telegram `/start` updates matching `TELEGRAM_USERNAME`. Set the numeric ID afterward.
 
-## Helius webhook
+## Automatic production setup
 
-Create a raw mainnet webhook monitoring the LaunchLab program address and point it at:
+After deploying, open `/admin`, enter `RADAR_ADMIN_SECRET`, and run setup. The protected setup endpoint:
 
-```text
-https://<deployment>/api/helius
-```
+- creates or updates the raw Helius mainnet webhook for the LaunchLab program;
+- points it at the deployment's `/api/helius` endpoint with the configured authorization secret;
+- resolves the Telegram chat from the most recent `/start` sent by `TELEGRAM_USERNAME`; and
+- sends a production test message.
 
-Use the same authorization value as `HELIUS_WEBHOOK_AUTH_SECRET`.
+It is idempotent and only updates the webhook when its configuration has changed.
 
 ## Verification
 

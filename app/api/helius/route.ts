@@ -7,7 +7,10 @@ export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   const expected = process.env.HELIUS_WEBHOOK_AUTH_SECRET;
-  if (expected && req.headers.get("authorization") !== expected) {
+  if (!expected) {
+    return NextResponse.json({ error: "webhook auth is not configured" }, { status: 503 });
+  }
+  if (req.headers.get("authorization") !== expected) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

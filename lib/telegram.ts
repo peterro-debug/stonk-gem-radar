@@ -6,6 +6,22 @@ function required(name: string): string {
   return v;
 }
 
+export type TelegramBotInfo = {
+  id: number;
+  username: string;
+};
+
+export async function getTelegramBotInfo(): Promise<TelegramBotInfo> {
+  const token = required("TELEGRAM_BOT_TOKEN");
+  const res = await fetch(`${TG_API}/bot${token}/getMe`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Telegram getMe failed: ${res.status}`);
+  const body = await res.json() as { ok?: boolean; result?: { id?: number; username?: string } };
+  if (!body.ok || !body.result?.id || !body.result.username) {
+    throw new Error("Telegram returned an invalid bot profile");
+  }
+  return { id: body.result.id, username: body.result.username };
+}
+
 export async function resolveTelegramChatId(): Promise<string> {
   if (process.env.TELEGRAM_CHAT_ID) return process.env.TELEGRAM_CHAT_ID;
   const token = required("TELEGRAM_BOT_TOKEN");
