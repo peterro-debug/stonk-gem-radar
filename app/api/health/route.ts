@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { pairMonitorStatus } from "@/lib/pair-monitor-status";
 import { xConfigured } from "@/lib/x-feed";
 import { ALERT_POLICY_VERSION, MIN_NARRATIVE_SCORE, MIN_ALERT_LIQUIDITY_USD } from "@/lib/alert-policy";
+import { outdatedLaunchRuns } from "@/lib/monitor-upgrade";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +23,14 @@ export async function GET() {
       xError: monitor.state?.x.error,
     };
   } catch { sources = { pairMonitor: "status-unavailable", x: xConfigured() ? "not-checked" : "not-configured" }; }
+  let legacyLaunchRunsRemaining: number | "unavailable";
+  try { legacyLaunchRunsRemaining = (await outdatedLaunchRuns()).length; }
+  catch { legacyLaunchRunsRemaining = "unavailable"; }
   return NextResponse.json({
     ok: true,
     revision: process.env.VERCEL_GIT_COMMIT_SHA,
     sources,
+    legacyLaunchRunsRemaining,
     configured: {
       helius: Boolean(process.env.HELIUS_API_KEY),
       webhookAuth: Boolean(process.env.HELIUS_WEBHOOK_AUTH_SECRET),

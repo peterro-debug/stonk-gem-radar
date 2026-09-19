@@ -4,7 +4,7 @@ import { pairMonitorStatus } from "@/lib/pair-monitor-status";
 import { xConfigured } from "@/lib/x-feed";
 import { outdatedLaunchRuns } from "@/lib/monitor-upgrade";
 import { start } from "workflow/api";
-import { upgradeMonitorWorkflow } from "@/workflows/upgrade-monitor";
+import { upgradeAllMonitorsWorkflow } from "@/workflows/upgrade-monitor";
 import { ALERT_POLICY_VERSION } from "@/lib/alert-policy";
 
 export const runtime = "nodejs";
@@ -27,14 +27,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
-    const old = await outdatedLaunchRuns();
-    const upgrades = [];
-    for (const runId of old.slice(0, 25)) {
-      const run = await start(upgradeMonitorWorkflow, [runId]);
-      upgrades.push({ previousRunId: runId, upgradeRunId: run.runId });
-    }
+    const upgrade = await start(upgradeAllMonitorsWorkflow, []);
     return NextResponse.json({ ok: true, policy: ALERT_POLICY_VERSION, xConfigured: xConfigured(),
-      upgrades, remainingToQueue: Math.max(0, old.length - upgrades.length), monitor: await ensurePairMonitor() });
+      upgradeRunId: upgrade.runId, monitor: await ensurePairMonitor() });
   } catch {
     return NextResponse.json({ ok: false, error: "Could not start pair monitor" }, { status: 503 });
   }

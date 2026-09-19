@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureHeliusWebhook } from "@/lib/helius-webhook";
 import { getTelegramBotInfo, resolveTelegramChatId, sendTelegram } from "@/lib/telegram";
 import { ensurePairMonitor } from "@/lib/ensure-pair-monitor";
+import { start } from "workflow/api";
+import { upgradeAllMonitorsWorkflow } from "@/workflows/upgrade-monitor";
+import { ALERT_POLICY_VERSION } from "@/lib/alert-policy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -44,7 +47,7 @@ export async function POST(req: NextRequest) {
     botUsername = bot.username;
     const chatId = await resolveTelegramChatId();
     await sendTelegram(
-      "✅ Stonk Gem Radar er aktivert. Helius-webhook og Telegram-varsling er koblet til produksjon.",
+      "✅ Telegram-koblingen fungerer. Nye positive tokenvarsler krever minst 3/5, begrunnet parring og komplette sikkerhetssjekker. Manglende datakilder holder signaler tilbake.",
     );
     telegram = { ok: true, botUsername: bot.username, chatId };
   } catch (error) {
@@ -54,6 +57,9 @@ export async function POST(req: NextRequest) {
   let monitor;
   try { monitor = await ensurePairMonitor(); }
   catch (error) { monitor = { error: safeError(error) }; }
-  const ok = !("error" in helius) && telegram.ok && !("error" in monitor);
-  return NextResponse.json({ ok, helius, telegram, monitor }, { status: ok ? 200 : 207 });
+  let upgrade;
+  try { upgrade = { runId: (await start(upgradeAllMonitorsWorkflow, [])).runId }; }
+  catch { upgrade = { error: "Could not enqueue monitor upgrades" }; }
+  const ok = !("error" in helius) && telegram.ok && !("error" in monitor) && !("error" in upgrade);
+  return NextResponse.json({ ok, helius, telegram, monitor, upgrade, policy: ALERT_POLICY_VERSION }, { status: ok ? 200 : 207 });
 }

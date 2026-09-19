@@ -44,7 +44,7 @@ DEX Screener valuations describe its base token. For reversed pairs (for example
 
 Incomplete holder samples and unknown pool exclusions produce `NO SIGNAL` while observation continues. In the first seven minutes a sample with fewer than 60 holders also waits for distribution to develop. After that, complete concentration data still hits the existing hard thresholds. Verified insider/bundle risks remain fatal at every age. A failed holder refresh cannot fabricate a holder-base collapse.
 
-Existing launch workflows remain pinned to their original deployment. After deploying a policy change, authenticated `POST /api/admin/monitor` queues durable upgrades in batches of 25. Each upgrade saves the latest completed analysis, peak/low values and notification history before cancelling the old run and starting its replacement. Active analysis/delivery steps are allowed to finish first. `GET /api/admin/monitor` reports the remaining legacy runs. Tests are synthetic regressions, not a historical replay proving an alert at a particular age or price.
+Existing launch workflows remain pinned to their original deployment. After deploying a policy change, authenticated `POST /api/admin/monitor` or the setup action queues a durable rollout. Each upgrade saves the latest completed analysis, peak/low values and notification history before cancelling the old run and starting its replacement. Active analysis/delivery steps are allowed to finish first. Health and protected monitor status report the remaining legacy runs. Setup also recovers a stale pair monitor while preserving its registry and launch cursor. Tests are synthetic regressions, not a historical replay proving an alert at a particular age or price.
 
 ## Hard wallet gate
 
