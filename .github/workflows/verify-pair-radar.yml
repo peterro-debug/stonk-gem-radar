@@ -70,17 +70,28 @@ jobs:
             if (!rows.every(r => r.quote?.mint === c.mint)) throw new Error(`${c.label}: quoteMint mismatch`);
             const firstThree = rows.slice(0, 3);
             const apiFirstThree = apiOldestFirst.slice(0, 3);
+            const timestamps = [...new Set(apiOldestFirst.map(r => r.createdAt))].sort((a,b) => Date.parse(a)-Date.parse(b));
+            const earliestTimestamp = timestamps[0];
+            const earliestBucket = apiOldestFirst.filter(r => r.createdAt === earliestTimestamp);
+            const afterBootstrap = apiOldestFirst.filter(r => r.createdAt !== earliestTimestamp);
             const targetIndex = c.findMint ? rows.findIndex(r => r.mint === c.findMint) : -1;
             const targetApiIndex = c.findMint ? apiOldestFirst.findIndex(r => r.mint === c.findMint) : -1;
+            const targetPostBootstrapIndex = c.findMint ? afterBootstrap.findIndex(r => r.mint === c.findMint) : -1;
             console.log(JSON.stringify({
               label: c.label,
               total: p1.total,
+              distinctCreatedAt: timestamps.length,
+              earliestTimestamp,
+              earliestTimestampCount: earliestBucket.length,
+              latestTimestamp: timestamps[timestamps.length - 1],
               firstThreeByCreatedAtThenMint: firstThree.map((r,i) => ({rank:i+1,mint:r.mint,name:r.name,symbol:r.symbol,createdAt:r.createdAt})),
               firstThreeByApiFeedOrder: apiFirstThree.map((r,i) => ({rank:i+1,mint:r.mint,name:r.name,symbol:r.symbol,createdAt:r.createdAt})),
+              firstFiveAfterEarliestBatch: afterBootstrap.slice(0,5).map((r,i) => ({rank:i+1,mint:r.mint,name:r.name,symbol:r.symbol,createdAt:r.createdAt})),
               ...(c.findMint ? {
                 target: c.findLabel,
                 targetRankByCreatedAtThenMint: targetIndex >= 0 ? targetIndex + 1 : null,
                 targetRankByApiFeedOrder: targetApiIndex >= 0 ? targetApiIndex + 1 : null,
+                targetRankAfterEarliestBatch: targetPostBootstrapIndex >= 0 ? targetPostBootstrapIndex + 1 : null,
                 targetRow: targetIndex >= 0 ? rows[targetIndex] : null,
               } : {}),
             }, null, 2));
