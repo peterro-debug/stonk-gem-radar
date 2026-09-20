@@ -9,12 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Read public quote data only
+      - name: Read exact FTT quote and configuration
         run: |
           node <<'NODE'
-          const base='https://www.stonkfun.xyz/api/public/v1';
-          async function get(p){try{const r=await fetch(base+p,{signal:AbortSignal.timeout(15000)});const b=await r.json();return {http:r.status,data:b.data??b}}catch(e){return {error:String(e)}}}
-          const match=p=>/ftx|ftt/i.test((p.name||'')+' '+(p.symbol||''));
-          const slim=t=>({mint:t.mint,name:t.name,symbol:t.symbol,quote:t.quote,createdAt:t.createdAt,status:t.status,market:t.market});
-          (async()=>{const a=await get('/pairs');const b=await get('/pairs?launchable=true&launchLabReady=true');const p=a.data?.pairs;const q=b.data?.pairs;const m=Array.isArray(p)?p.filter(match):null;const out={observedAt:new Date().toISOString(),registry:{http:a.http,error:a.error,keys:Object.keys(a.data||{}),count:p?.length,pagination:a.data?.pagination,matches:m},ready:{http:b.http,error:b.error,count:q?.length,matches:Array.isArray(q)?q.filter(match):null},launches:[],names:[]};for(const t of m||[]){for(const sort of ['newest','volume']){const r=await get('/tokens?quoteMint='+encodeURIComponent(t.mint)+'&sort='+sort+'&page=1&pageSize=5');out.launches.push({quoteMint:t.mint,sort,http:r.http,error:r.error,pagination:r.data?.pagination,rows:r.data?.tokens?.map(slim)});}}for(const name of ['FTX','FTT']){const r=await get('/tokens?q='+name+'&sort=newest&page=1&pageSize=3');out.names.push({name,http:r.http,error:r.error,pagination:r.data?.pagination,rows:r.data?.tokens?.map(slim)});}console.log('FTX_RESULT='+JSON.stringify(out));})().catch(console.error);
+          const B='https://www.stonkfun.xyz/api/public/v1',M='EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv';
+          async function get(p){try{const r=await fetch(B+p,{signal:AbortSignal.timeout(15000)});const b=await r.json();return {url:B+p,http:r.status,observedAt:new Date().toISOString(),data:b.data??b}}catch(e){return {url:B+p,error:String(e)}}}
+          (async()=>{const results=await Promise.all(['/pairs','/pairs?launchable=true&launchLabReady=true','/tokens?quoteMint='+M+'&sort=newest&page=1&pageSize=3','/tokens?quoteMint='+M+'&sort=volume&page=1&pageSize=3','/launchlab/pricing?quoteMint='+M,'/stats'].map(get));for(let i=0;i<results.length;i++){const r=results[i];if(i<2)r.data={count:r.data?.pairs?.length,pairs:r.data?.pairs?.filter(p=>p.mint===M)};if(i===5)r.data={config:r.data?.config};console.log('FTT_SOURCE_'+i+'='+JSON.stringify(r));}
+          const p=results[4].data;const config=p?.curve?.configId;if(config){try{const r=await fetch('https://api.mainnet-beta.solana.com',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'getMultipleAccounts',params:[[config,M],{encoding:'jsonParsed',commitment:'confirmed'}]}),signal:AbortSignal.timeout(15000)});const b=await r.json();console.log('FTT_ONCHAIN='+JSON.stringify({observedAt:new Date().toISOString(),http:r.status,config,quoteMint:M,slot:b.result?.context?.slot,error:b.error,accounts:b.result?.value?.map(a=>a?{owner:a.owner,lamports:a.lamports,executable:a.executable,data:Array.isArray(a.data)?{encoding:a.data[1],base64Length:a.data[0].length}:a.data}:null)}));}catch(e){console.log('FTT_ONCHAIN_ERROR='+String(e));}}
+          })().catch(console.error);
           NODE
