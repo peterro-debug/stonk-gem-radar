@@ -1,9 +1,11 @@
 import { createHook, getWorkflowMetadata, getWritable, sleep, FatalError } from "workflow";
 import { start } from "workflow/api";
 import { listQuotePairs } from "@/lib/pairs";
+import { getBatchPairMetrics } from "@/lib/dex";
 import { firstPairLaunchesFromRows, getPairLaunchFeed, listFirstPairLaunchesSince, listRecentLaunches, stonkRowToLaunch } from "@/lib/stonk";
-import { activePairEvent, announcementEvents, emptyMonitorState, EVENT_WINDOW_MS, formatPairEvent, formatPairLaunchAlert, observePairs,
-  PAIR_MONITOR_TOKEN, type PairLaunchAlert, type PairMonitorState } from "@/lib/pair-events";
+import { activePairEvent, announcementEvents, emptyMonitorState, EVENT_WINDOW_MS, formatPairEvent, formatPairLaunchAlert,
+  formatPairMomentumAlert, observePairs, pairMomentumReason, PAIR_MONITOR_TOKEN,
+  type PairCohortMember, type PairLaunchAlert, type PairMomentumAlert, type PairMonitorState } from "@/lib/pair-events";
 import { pollOfficialX } from "@/lib/x-feed";
 import { sendTelegram } from "@/lib/telegram";
 import type { Launch, PairEvent, QuoteMeta } from "@/lib/types";
@@ -19,6 +21,7 @@ export async function pollPairSources(previous: PairMonitorState) {
     pairLaunchWatches: Object.fromEntries(Object.entries(previous.pairLaunchWatches || {})
       .filter(([, watch]) => now - watch.eventDetectedAt < EVENT_WINDOW_MS)
       .map(([mint, watch]) => [mint, { ...watch, ranked: [...(watch.ranked || [])],
+        cohort: [...(watch.cohort || [])], momentumNotified: { ...(watch.momentumNotified || {}) },
         notifiedMints: { ...watch.notifiedMints } }])),
     seenLaunches: Object.fromEntries(Object.entries(previous.seenLaunches).filter(([, at]) => now - at < EVENT_WINDOW_MS)) };
   // The global feed is a live discovery lane, not an unbounded historical
@@ -39,6 +42,8 @@ export async function pollPairSources(previous: PairMonitorState) {
         eventDetectedAt: event.detectedAt,
         ranked: [],
         notifiedMints: {},
+        cohort: [],
+        momentumNotified: {},
       };
     }
     events.push(...observed.added);
@@ -69,21 +74,28 @@ export async function pollPairSources(previous: PairMonitorState) {
   const pairFeeds = await Promise.allSettled(activePairEvents.map(async event => {
     const feed = await getPairLaunchFeed(event.quoteMint);
     const watch = state.pairLaunchWatches?.[event.quoteMint];
-    let ranked = watch
-      ? firstPairLaunchesFromRows(feed.rows, event.detectedAt - 5 * 60_000, 3)
+    let cohortRows = watch && now - event.detectedAt <= 2 * 60 * 60_000
+      ? firstPairLaunchesFromRows(feed.rows, event.detectedAt - 5 * 60_000, 200)
       : [];
-    if (watch && (feed.total ?? feed.rows.length) > feed.rows.length) {
-      ranked = await listFirstPairLaunchesSince(event.quoteMint, event.detectedAt - 5 * 60_000, 3);
+    if (watch && now - event.detectedAt <= 2 * 60 * 60_000
+      && (feed.total ?? feed.rows.length) > feed.rows.length) {
+      cohortRows = await listFirstPairLaunchesSince(event.quoteMint, event.detectedAt - 5 * 60_000, 200);
     }
-    return { event, rows: feed.rows, ranked };
+    const ranked = cohortRows.slice(0, 3);
+    const dex = cohortRows.length
+      ? await getBatchPairMetrics(cohortRows.map(row => row.mint), event.quoteMint)
+      : {};
+    return { event, rows: feed.rows, ranked, cohortRows, dex };
   }));
   const pairCandidates: Launch[] = [];
   const pairLaunchAlerts: PairLaunchAlert[] = [];
+  const pairMomentumAlerts: PairMomentumAlert[] = [];
   let pairFailures = 0;
   for (const result of pairFeeds) {
     if (result.status === "rejected") { pairFailures += 1; continue; }
-    const { event, rows, ranked } = result.value;
+    const { event, rows, ranked, cohortRows, dex } = result.value;
     const watch = state.pairLaunchWatches?.[event.quoteMint];
+    const momentumRows = new Set<string>();
     if (watch) {
       // Freeze #1/#2/#3 the first time each slot is observed. STONK can index
       // an older row late; that must never re-label a second token as the same rank.
@@ -100,8 +112,48 @@ export async function pollPairSources(previous: PairMonitorState) {
             name: saved.name, symbol: saved.symbol, launchedAt: saved.launchedAt, event });
         }
       });
+
+      const prior = new Map((watch.cohort || []).map(member => [member.mint, member]));
+      watch.cohort = cohortRows.slice(0, 200).map((row, index): PairCohortMember => {
+        const d = dex[row.mint] || {};
+        const old = prior.get(row.mint);
+        const marketCap = d.marketCap ?? row.market?.marketCapUsd ?? row.market?.fdvUsd;
+        const volume5m = d.volume5m;
+        const buys5m = d.buys5m;
+        return {
+          rank: index + 1,
+          mint: row.mint,
+          name: row.name,
+          symbol: row.symbol,
+          launchedAt: Date.parse(row.createdAt || ""),
+          checkedAt: now,
+          marketCap,
+          liquidityUsd: d.liquidityUsd ?? row.market?.liquidityUsd,
+          volume5m,
+          volume24h: d.volume24h ?? row.market?.volume24hUsd,
+          buys5m,
+          sells5m: d.sells5m,
+          status: row.status,
+          graduationProgress: row.graduationProgress,
+          peakMarketCap: Math.max(old?.peakMarketCap || 0, marketCap || 0) || undefined,
+          peakVolume5m: Math.max(old?.peakVolume5m || 0, volume5m || 0) || undefined,
+          peakBuys5m: Math.max(old?.peakBuys5m || 0, buys5m || 0) || undefined,
+        };
+      }).filter(member => Number.isFinite(member.launchedAt));
+
+      watch.momentumNotified = watch.momentumNotified || {};
+      for (const member of watch.cohort) {
+        const reason = pairMomentumReason(member, now);
+        if (!reason || watch.momentumNotified[member.mint]) continue;
+        pairMomentumAlerts.push({ ...member, quoteMint: event.quoteMint, event, reason });
+        momentumRows.add(member.mint);
+      }
     }
-    for (const row of rows) {
+    const candidateRows = [...new Map([
+      ...rows,
+      ...cohortRows.filter(row => momentumRows.has(row.mint) || ranked.some(first => first.mint === row.mint)),
+    ].map(row => [row.mint, row])).values()];
+    for (const row of candidateRows) {
       const launch = stonkRowToLaunch(row);
       if (!launch || launch.quoteMint !== event.quoteMint || state.seenLaunches[launch.mint]) continue;
       // Allow a small indexing race where a launch can appear just before the
@@ -158,7 +210,7 @@ export async function pollPairSources(previous: PairMonitorState) {
     } else state.discoveryError = errorText(discovery.reason);
   }
   state.lastStartedCount = launches.length;
-  return { state, events, launches, pairLaunchAlerts };
+  return { state, events, launches, pairLaunchAlerts, pairMomentumAlerts };
 }
 
 async function enqueueLaunch(launch: Launch) {
@@ -178,6 +230,12 @@ async function notifyPair(event: PairEvent, quote?: QuoteMeta) {
 async function notifyPairLaunch(alert: PairLaunchAlert, quote?: QuoteMeta) {
   "use step";
   try { await sendTelegram(formatPairLaunchAlert(alert, quote), alert.mint); return true; }
+  catch { return false; }
+}
+
+async function notifyPairMomentum(alert: PairMomentumAlert, quote?: QuoteMeta) {
+  "use step";
+  try { await sendTelegram(formatPairMomentumAlert(alert, quote), alert.mint); return true; }
   catch { return false; }
 }
 
@@ -240,7 +298,18 @@ export async function pairMonitorWorkflow(seed?: PairMonitorState, predecessor?:
           pairLaunchDeliveryFailed = true;
         }
       }
-      state.notificationError = pending.length || pairLaunchDeliveryFailed
+      let momentumDeliveryFailed = false;
+      for (const alert of result.pairMomentumAlerts.sort((a, b) => a.rank - b.rank)) {
+        const watch = state.pairLaunchWatches?.[alert.quoteMint];
+        if (!watch || watch.momentumNotified?.[alert.mint]) continue;
+        if (await notifyPairMomentum(alert, state.knownPairs.find(p => p.mint === alert.quoteMint))) {
+          watch.momentumNotified = watch.momentumNotified || {};
+          watch.momentumNotified[alert.mint] = Date.now();
+        } else {
+          momentumDeliveryFailed = true;
+        }
+      }
+      state.notificationError = pending.length || pairLaunchDeliveryFailed || momentumDeliveryFailed
         ? "Telegram delivery pending; retrying next poll" : undefined;
       await checkpoint(state);
       await sleep("60s");

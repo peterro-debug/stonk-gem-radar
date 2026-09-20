@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { announcementEvents, emptyMonitorState, observePairs, activePairEvent, formatPairEvent, formatPairLaunchAlert, pairLaunchFeedUrl } from "@/lib/pair-events";
+import { announcementEvents, emptyMonitorState, observePairs, activePairEvent, formatPairEvent, formatPairLaunchAlert,
+  pairLaunchFeedUrl, pairMomentumReason, formatPairMomentumAlert } from "@/lib/pair-events";
 import { nameAssociation } from "@/lib/name-fit";
 import { pollOfficialX } from "@/lib/x-feed";
 import { pollPairSources } from "@/workflows/pair-monitor";
@@ -37,6 +38,39 @@ describe("new pair events and name relationships", () => {
     expect(message).toContain("PEPE LAUNCH #1");
     expect(message).toContain("FEELSGOOD / PEPE");
     expect(message).toContain("STONK-feed rank: #1");
+  });
+  it("would surface the historical FEELSGOOD winner even at PEPE cohort position ~137", () => {
+    const member = {
+      rank: 137,
+      mint: "HgcxVs6kJhPAaGqnPNGaa7zYgNT49hJrLufiqcNMuYZT",
+      name: "Feels Good Man",
+      symbol: "FEELSGOOD",
+      launchedAt: Date.parse("2026-09-18T21:30:47.922Z"),
+      checkedAt: Date.parse("2026-09-18T22:11:47.922Z"),
+      marketCap: 347_000,
+      liquidityUsd: 40_000,
+      volume5m: 30_000,
+      volume24h: 505_000,
+      buys5m: 80,
+      sells5m: 42,
+      status: "graduated",
+      graduationProgress: 1,
+    };
+    const reason = pairMomentumReason(member, member.checkedAt);
+    expect(reason).toBeTruthy();
+    const event = { quoteMint: "pepe", detectedAt: member.launchedAt - 10 * 60_000,
+      source: "stonk-registry" as const, sourceUrl: "https://www.stonkfun.xyz", description: "PEPE live" };
+    const message = formatPairMomentumAlert({ ...member, quoteMint: "pepe", event, reason: reason! }, pepe);
+    expect(message).toContain("FIRST-200 MOMENTUM");
+    expect(message).toContain("#137");
+    expect(message).toContain("FEELSGOOD");
+  });
+  it("does not flag a dead first-200 token with no traction", () => {
+    const time = Date.now();
+    expect(pairMomentumReason({
+      rank: 88, mint: "dead", launchedAt: time - 15 * 60_000, checkedAt: time,
+      marketCap: 4_500, liquidityUsd: 300, volume5m: 40, volume24h: 300, buys5m: 2, sells5m: 5,
+    }, time)).toBeUndefined();
   });
   it("does not mislabel an X confirmation as a new registry addition", () => {
     const event = { quoteMint: "pepe", detectedAt: now, source: "x-announcement" as const,

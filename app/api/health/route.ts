@@ -21,6 +21,10 @@ export async function GET() {
       pairLaunchesLastSuccessAt: monitor.state?.pairLaunchesLastSuccessAt,
       pairLaunchesError: monitor.state?.pairLaunchesError,
       activePairLaunchWatches: Object.keys(monitor.state?.pairLaunchWatches || {}).length,
+      trackedPairCohortTokens: Object.values(monitor.state?.pairLaunchWatches || {})
+        .reduce((sum, watch) => sum + (watch.cohort?.length || 0), 0),
+      pairMomentumAlertsSent: Object.values(monitor.state?.pairLaunchWatches || {})
+        .reduce((sum, watch) => sum + Object.keys(watch.momentumNotified || {}).length, 0),
       discoveryLastSuccessAt: monitor.state?.discoveryLastSuccessAt,
       discoveryError: monitor.state?.discoveryError,
       lastStartedCount: monitor.state?.lastStartedCount,

@@ -96,6 +96,9 @@ jobs:
               } : {}),
             }, null, 2));
             if (c.findMint && targetIndex < 0) throw new Error(`${c.label}: ${c.findLabel} mint not found in complete quote feed`);
+            if (c.label === "PEPE" && targetApiIndex >= 200) {
+              throw new Error(`PEPE: FEELSGOOD fell outside first-200 cohort at feed rank ${targetApiIndex + 1}`);
+            }
           }
           NODE
       - name: Production watchdog smoke test

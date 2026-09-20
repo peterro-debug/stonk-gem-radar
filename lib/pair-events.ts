@@ -5,12 +5,42 @@ import type { XCursor, XPost } from "./x-feed";
 export const EVENT_WINDOW_MS = 48 * 60 * 60_000;
 export const PAIR_MONITOR_TOKEN = "stonk-pair-monitor:v1";
 
+export type PairCohortMember = {
+  rank: number;
+  mint: string;
+  name?: string;
+  symbol?: string;
+  launchedAt: number;
+  checkedAt: number;
+  marketCap?: number;
+  liquidityUsd?: number;
+  volume5m?: number;
+  volume24h?: number;
+  buys5m?: number;
+  sells5m?: number;
+  status?: string;
+  graduationProgress?: number;
+  peakMarketCap?: number;
+  peakVolume5m?: number;
+  peakBuys5m?: number;
+};
+
+export type PairMomentumAlert = PairCohortMember & {
+  quoteMint: string;
+  event: PairEvent;
+  reason: string;
+};
+
 export type PairLaunchWatch = {
   eventDetectedAt: number;
   // Once a slot is assigned it never shifts. This prevents a delayed API row
   // from causing two different tokens to be announced as "#1".
   ranked: Array<{ mint: string; name?: string; symbol?: string; launchedAt: number }>;
   notifiedMints: Record<string, number>;
+  // Lightweight first-200 cohort. Heavy wallet/holder work is only promoted
+  // when activity appears, keeping burst monitoring fast and affordable.
+  cohort?: PairCohortMember[];
+  momentumNotified?: Record<string, number>;
 };
 
 export type PairLaunchAlert = {
@@ -125,5 +155,49 @@ export function formatPairLaunchAlert(alert: PairLaunchAlert, quote?: QuoteMeta)
     `Token mint: ${alert.mint}`,
     `Opprettet: ${new Date(alert.launchedAt).toISOString()}`,
     "Radaren starter analyse så snart markeds- og pooldata er klare. Dette er et rått discovery-varsel, ikke GEM-godkjenning.",
+  ].join("\n");
+}
+
+
+export function pairMomentumReason(member: PairCohortMember, now = Date.now()): string | undefined {
+  const ageMinutes = Math.max(0, (now - member.launchedAt) / 60_000);
+  if (ageMinutes > 120) return undefined;
+  const buys = member.buys5m ?? 0;
+  const sells = member.sells5m ?? 0;
+  const volume5m = member.volume5m ?? 0;
+  const volume24h = member.volume24h ?? 0;
+  const mc = member.marketCap ?? 0;
+  const graduated = member.status === "graduated" || (member.graduationProgress ?? 0) >= 1;
+
+  if (graduated && ageMinutes <= 60) return "graduated within the first hour";
+  if (buys >= 20 && volume5m >= 1_500 && buys >= Math.max(1, sells) * 1.1) {
+    return `${buys} buys / 5m with ${Math.round(volume5m)} USD 5m volume and positive buy pressure`;
+  }
+  if (buys >= 8 && volume5m >= 5_000) return `${Math.round(volume5m)} USD 5m volume with ${buys} buys`;
+  if (mc >= 50_000 && volume24h >= 15_000) return `market cap ${Math.round(mc)} USD with ${Math.round(volume24h)} USD launch-period volume`;
+  if (mc >= 100_000) return `market cap crossed ${Math.round(mc)} USD`;
+  return undefined;
+}
+
+function compactUsd(value?: number): string {
+  if (value == null || !Number.isFinite(value)) return "ukjent";
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}k`;
+  return `$${value.toFixed(0)}`;
+}
+
+export function formatPairMomentumAlert(alert: PairMomentumAlert, quote?: QuoteMeta): string {
+  const q = quote?.symbol || quote?.name || alert.quoteMint;
+  const token = alert.name || alert.symbol || alert.mint;
+  return [
+    `🔥 STONK — ${q} FIRST-200 MOMENTUM`,
+    `${token} / ${q}`,
+    `STONK-feed cohort: #${alert.rank} av første 200`,
+    `MC ${compactUsd(alert.marketCap)} · Likviditet ${compactUsd(alert.liquidityUsd)}`,
+    `Volum 5m ${compactUsd(alert.volume5m)} · Launch/24h ${compactUsd(alert.volume24h)}`,
+    `Buys/sells 5m: ${alert.buys5m ?? "ukjent"}/${alert.sells5m ?? "ukjent"}`,
+    `Trigger: ${alert.reason}`,
+    `Token mint: ${alert.mint}`,
+    "Full wallet-, holder- og risikokontroll er satt i gang. Dette er et momentum/discovery-varsel, ikke GEM-godkjenning.",
   ].join("\n");
 }
