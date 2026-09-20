@@ -95,7 +95,6 @@ export async function getTraderMetrics(
   baseVault: string | undefined,
   launchedAtMs: number,
 ): Promise<import("./types").TraderMetrics> {
-  if (!baseVault) return {};
   try {
     const res = await fetch(
       `https://api.helius.xyz/v0/addresses/${poolState}/transactions?api-key=${apiKey()}&limit=100`,
@@ -115,14 +114,31 @@ export async function getTraderMetrics(
       let touched = false;
       for (const t of transfers) {
         if (t?.mint !== mint) continue;
-        if (t?.fromTokenAccount === baseVault) {
-          const wallet = t?.toUserAccount || tx?.feePayer;
-          if (wallet) buyers.add(wallet);
+        if (baseVault) {
+          if (t?.fromTokenAccount === baseVault) {
+            const wallet = t?.toUserAccount || tx?.feePayer;
+            if (wallet) buyers.add(wallet);
+            touched = true;
+          }
+          if (t?.toTokenAccount === baseVault) {
+            const wallet = t?.fromUserAccount || tx?.feePayer;
+            if (wallet) sellers.add(wallet);
+            touched = true;
+          }
+          continue;
+        }
+        // API-discovered Stonk launches do not always include the token vault.
+        // For those, enhanced-transfer ownership plus the transaction fee payer
+        // gives a conservative wallet-direction fallback: the fee payer receiving
+        // the target token is a buyer; sending it is a seller.
+        const wallet = tx?.feePayer;
+        if (!wallet) continue;
+        if (t?.toUserAccount === wallet && t?.fromUserAccount !== wallet) {
+          buyers.add(wallet);
           touched = true;
         }
-        if (t?.toTokenAccount === baseVault) {
-          const wallet = t?.fromUserAccount || tx?.feePayer;
-          if (wallet) sellers.add(wallet);
+        if (t?.fromUserAccount === wallet && t?.toUserAccount !== wallet) {
+          sellers.add(wallet);
           touched = true;
         }
       }
@@ -135,6 +151,8 @@ export async function getTraderMetrics(
       uniqueSellers: sellers.size,
       uniqueTraders: new Set([...buyers, ...sellers]).size,
       sampledSwaps: swaps,
+      directionMethod: baseVault ? "vault" : "fee-payer",
+      approximate: !baseVault,
     };
   } catch {
     return {};

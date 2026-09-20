@@ -80,6 +80,8 @@ export type TraderMetrics = {
   uniqueSellers?: number;
   uniqueTraders?: number;
   sampledSwaps?: number;
+  directionMethod?: "vault" | "fee-payer";
+  approximate?: boolean;
 };
 
 export type TokenMeta = {
