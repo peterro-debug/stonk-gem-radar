@@ -49,6 +49,7 @@ export function summarizeDemo(snapshot: Snapshot) {
       sells5m: snapshot.pair.sells5m,
     },
     participation: {
+      error: snapshot.holders.error,
       holders: snapshot.holders.holders,
       top10Pct: snapshot.holders.top10Pct,
       creatorPct: snapshot.holders.creatorPct,

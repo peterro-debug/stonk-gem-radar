@@ -61,6 +61,7 @@ export type PairMetrics = {
 };
 
 export type HolderMetrics = {
+  error?: string;
   checkedAt?: number;
   holders: number;
   top10Pct?: number;
@@ -151,6 +152,8 @@ export type WalletRiskMetrics = {
   gmgn?: {
     status: string; error?: string; sampledWallets: number; expectedWallets?: number;
     coverageComplete: boolean; missing: string[];
+    checkedAt?: number; sampleValid?: boolean; sampledSupplyPct?: number;
+    largestObservedHolderPct?: number; top10ObservedPct?: number;
     observedSupplyPct: Partial<Record<"bundledSupplyPct" | "sniperSupplyPct" | "insiderSupplyPct" | "commonFunderSupplyPct" | "freshWalletSupplyPct", number>>;
   };
 };

@@ -62,7 +62,10 @@ export async function upgradeAllMonitorsWorkflow() {
   try {
     const old = await listLegacy();
     const upgrades: string[] = [];
-    for (const runId of old) upgrades.push(await enqueueUpgrade(runId));
+    for (let i = 0; i < old.length; i++) {
+      upgrades.push(await enqueueUpgrade(old[i]));
+      if (i + 1 < old.length) await sleep("10s");
+    }
     return { total: old.length, upgrades };
   } finally { lock.dispose(); }
 }

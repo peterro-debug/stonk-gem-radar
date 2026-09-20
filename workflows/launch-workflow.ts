@@ -1,4 +1,4 @@
-import { createHook, sleep, FatalError } from "workflow";
+import { createHook, sleep, FatalError, RetryableError, getStepMetadata } from "workflow";
 import type { AnalysisContext, Launch, LaunchMonitorSeed, RadarRunResult, SignalStatus, Snapshot } from "@/lib/types";
 import { CHECKPOINT_AGES_MS, DAY, MINUTE } from "@/lib/constants";
 import { analyzeLaunch } from "@/lib/analyze";
@@ -10,8 +10,15 @@ import { maySendAlert, positiveAlertBlockers } from "@/lib/alert-policy";
 
 async function check(launch: Launch, context: AnalysisContext): Promise<Snapshot> {
   "use step";
-  return analyzeLaunch(launch, context);
+  const snapshot = await analyzeLaunch(launch, context);
+  // A temporary provider failure must not push an older token's next useful
+  // check out to the next day-scale checkpoint. Durable backoff avoids bursts.
+  if (snapshot.status === "NO SIGNAL" && snapshot.holders.error && getStepMetadata().attempt < 3) {
+    throw new RetryableError("Holder provider unavailable; retrying with backoff", { retryAfter: "90s" });
+  }
+  return snapshot;
 }
+check.maxRetries = 3;
 
 async function notify(snapshot: Snapshot, everAlerted: boolean): Promise<boolean> {
   "use step";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "@/lib/score";
-import { maySendAlert, observationBlockers } from "@/lib/alert-policy";
+import { maySendAlert, observationBlockers, partialObservationEvidence } from "@/lib/alert-policy";
 import { assessNovelty, similarIdentity } from "@/lib/novelty";
 import { narrativeScore } from "@/lib/narrative";
 import { formatAlert } from "@/lib/format";
@@ -23,6 +23,28 @@ function unknownConcept(name = "Velvet Orbit") {
 }
 
 describe("open concept discovery and graded alerts", () => {
+  it("allows a disclosed partial-data observation only with a substantial fresh wallet sample", () => {
+    const s = unknownConcept();
+    s.holders = { holders: 0, sampleComplete: false, error: "Helius RPC getTokenAccounts failed: 429" };
+    s.wallet.graphChecked = false; s.wallet.insiderSupplyPct = undefined;
+    s.wallet.gmgn = { status: "incomplete", checkedAt: s.checkedAt, sampledWallets: 99, expectedWallets: 415,
+      sampleValid: true, sampledSupplyPct: 78, largestObservedHolderPct: 3, top10ObservedPct: 22,
+      coverageComplete: false, missing: ["funding origins"], observedSupplyPct: {} };
+    expect(partialObservationEvidence(s)).toBe(true);
+    const classified = { ...s, ...classify(s) };
+    expect(classified.status).toBe("OBSERVATION");
+    expect(maySendAlert(classified, false)).toBe(true);
+    expect(formatAlert(classified)).toContain("Eierutvalg 99/415");
+    expect(formatAlert(classified)).toContain("utsteder, øvrige eiere og insiderkoblinger ikke fullt kontrollert");
+    expect(maySendAlert({ ...classified, status: "GEM" }, false)).toBe(false);
+    for (const fields of [{ sampledSupplyPct: 49 }, { sampledWallets: 20 }, { sampleValid: false },
+      { top10ObservedPct: 50 }, { largestObservedHolderPct: 15 }, { checkedAt: s.checkedAt - 360_000 }]) {
+      const changed = { ...classified, wallet: { ...s.wallet, gmgn: { ...s.wallet.gmgn, ...fields } } };
+      expect(maySendAlert(changed, false)).toBe(false);
+    }
+    s.wallet.insiderSupplyPct = 10;
+    expect(classify(s).status).toBe("SKIP");
+  });
   it.each(["Velvet Orbit", "Copper Lantern", "Quiet Comet"])("finds previously unknown concept %s without a name whitelist", name => {
     const s = unknownConcept(name);
     expect(s.narrative.pairFit).toBe(false);

@@ -167,6 +167,8 @@ export async function getWalletRiskMetrics(mint: string, launchedAt: number, kno
     trackerError: tracker.error,
     trackerRiskScore: tracker.riskScore,
     gmgn: { status: gmgn.status, error: gmgn.error, sampledWallets: gmgn.sampledWallets,
+      checkedAt: gmgn.checkedAt, sampleValid: gmgn.sampleValid, sampledSupplyPct: gmgn.sampledSupplyPct,
+      largestObservedHolderPct: gmgn.largestObservedHolderPct, top10ObservedPct: gmgn.top10ObservedPct,
       expectedWallets: gmgn.expectedWallets, coverageComplete: gmgn.coverageComplete,
       missing: gmgn.missing, observedSupplyPct: gmgn.observed },
   };

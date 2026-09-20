@@ -65,11 +65,29 @@ export function novelConceptQualified(s: Evidence, now = s.checkedAt): boolean {
     && !n.duplicate && n.score >= 3);
 }
 
+// A bounded, explicitly partial holder sample can support manual review during
+// provider outages. Its unseen balances and ownership remain UNKNOWN.
+export function partialObservationEvidence(s: Evidence, now = s.checkedAt): boolean {
+  const g = s.wallet.gmgn;
+  return Boolean(g && isFresh(g.checkedAt, now) && g.sampleValid === true
+    && g.sampledWallets >= 60 && (g.expectedWallets ?? 0) >= g.sampledWallets
+    && (g.sampledSupplyPct ?? 0) >= 50 && (g.sampledSupplyPct ?? 101) <= 100.0001
+    && g.largestObservedHolderPct != null && g.largestObservedHolderPct <= 10
+    && g.top10ObservedPct != null && g.top10ObservedPct <= 35
+    && s.wallet.excludedTokenAccounts.length > 0);
+}
+
 // An observation is an explicit request for human review, never a verified GEM.
 // Only specified specialist gaps are allowed; core evidence still fails closed.
 export function observationBlockers(s: Evidence, now = s.checkedAt): string[] {
   const permittedGaps = new Set(["bundles", "snipers", "common funders", "fresh-wallet concentration",
     "wallet gate UNKNOWN", "on-chain buyer sample"]);
+  const partial = partialObservationEvidence(s, now);
+  if (partial) {
+    permittedGaps.add("insider graph");
+    permittedGaps.add("complete holder and creator distribution with pool exclusions");
+    permittedGaps.add("fresh holder evidence");
+  }
   if (novelConceptQualified(s, now)) {
     permittedGaps.add("narrative at least 3/5");
     permittedGaps.add("documented name/pair connection");
@@ -78,8 +96,9 @@ export function observationBlockers(s: Evidence, now = s.checkedAt): string[] {
   const mc = s.pair.marketCap ?? s.pair.fdv ?? 0;
   const cap = s.mode === "FLASH" ? 750_000 : s.mode === "BUILD" ? 5_000_000 : 10_000_000;
   if (mc < 5_000 || mc > cap) blockers.push("outside observation market-cap window");
-  if (s.holders.holders < 60) blockers.push("at least 60 measured holders");
-  if ((s.holders.top10Pct ?? 100) > 55 || (s.holders.creatorPct ?? 100) > 15) blockers.push("holder concentration");
+  if (!partial && s.holders.holders < 60) blockers.push("at least 60 measured holders");
+  if ((!partial && (s.holders.top10Pct == null || s.holders.creatorPct == null))
+    || (s.holders.top10Pct ?? 0) > 55 || (s.holders.creatorPct ?? 0) > 15) blockers.push("holder concentration");
   if (s.wallet.verification === "RISKY") blockers.push("known wallet risk");
   const volume = s.mode === "FLASH" ? s.pair.volume5m : s.mode === "BUILD" ? s.pair.volume1h : s.pair.volume24h;
   const minimum = s.mode === "FLASH" ? 10_000 : s.mode === "BUILD" ? 20_000 : 50_000;

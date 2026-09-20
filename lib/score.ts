@@ -1,6 +1,6 @@
 import { isAlertStatus } from "./transitions";
 import type { SignalStatus, Snapshot } from "./types";
-import { observationBlockers, positiveAlertBlockers, walletThresholdRisks } from "./alert-policy";
+import { observationBlockers, partialObservationEvidence, positiveAlertBlockers, walletThresholdRisks } from "./alert-policy";
 
 type SnapshotBase = Omit<Snapshot, "score" | "status" | "reasons" | "risks">;
 
@@ -111,7 +111,7 @@ export function classify(
     return { score: rawScore, status, reasons, risks: [...new Set([...risks, ...fatal, "hard risk threshold hit"])] };
   }
 
-  if (holdersPending) return { score: rawScore, status: "NO SIGNAL", reasons, risks: [...new Set(risks)] };
+  if (holdersPending && !partialObservationEvidence(s)) return { score: rawScore, status: "NO SIGNAL", reasons, risks: [...new Set(risks)] };
 
   const blockers = positiveAlertBlockers(s);
   if (blockers.length) return { score: rawScore,

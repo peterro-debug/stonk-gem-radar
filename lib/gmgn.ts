@@ -8,6 +8,7 @@ export type GmgnReport = { status: "not-configured" | "unavailable" | "incomplet
 export type GmgnEvidence = {
   status: GmgnReport["status"]; checkedAt?: number; error?: string; missing: string[]; flags: string[];
   sampledWallets: number; expectedWallets?: number; coverageComplete: boolean;
+  sampleValid?: boolean; sampledSupplyPct?: number; largestObservedHolderPct?: number; top10ObservedPct?: number;
   observed: Partial<Record<SupplyField, number>>;
   bundledSupplyPct?: number; sniperSupplyPct?: number; insiderSupplyPct?: number;
   commonFunderSupplyPct?: number; freshWalletSupplyPct?: number;
@@ -98,6 +99,7 @@ export function parseGmgnEvidence(mint: string, launchedAt: number, report: Gmgn
   let validRows = true, tagComplete = true, fundingComplete = true, ageComplete = true;
   let sum = 0, bundles = 0, snipers = 0, insiders = 0, fresh = 0;
   const funding = new Map<string, { count: number; share: number }>();
+  const holderShares: number[] = [];
   for (const row of rows) {
     const share = ratio(row?.amount_percentage);
     const balance = numberValue(row?.balance);
@@ -109,6 +111,7 @@ export function parseGmgnEvidence(mint: string, launchedAt: number, report: Gmgn
     // GMGN's generic address type alone does not establish a pool exclusion.
     if (excluded.has(row.account_address)) continue;
     result.sampledWallets++;
+    holderShares.push(share);
     if (!Array.isArray(row.maker_token_tags) || !row.maker_token_tags.every((t: any) => typeof t === "string")) tagComplete = false;
     const tags: string[] = Array.isArray(row.maker_token_tags) ? row.maker_token_tags : [];
     if (tags.includes("bundler")) bundles += share;
@@ -134,6 +137,11 @@ export function parseGmgnEvidence(mint: string, launchedAt: number, report: Gmgn
   if (!ageComplete) result.missing.push("wallet creation timestamps");
   const common = Math.max(0, ...[...funding.values()].filter(c => c.count >= 2).map(c => c.share));
   if (validRows && rows.length && sum <= 1.000001) {
+    result.sampleValid = true;
+    result.sampledSupplyPct = holderShares.reduce((total, share) => total + share, 0) * 100;
+    holderShares.sort((a, b) => b - a);
+    result.largestObservedHolderPct = (holderShares[0] ?? 0) * 100;
+    result.top10ObservedPct = holderShares.slice(0, 10).reduce((total, share) => total + share, 0) * 100;
     result.observed = { bundledSupplyPct: bundles * 100, sniperSupplyPct: snipers * 100,
       insiderSupplyPct: insiders * 100, commonFunderSupplyPct: common * 100, freshWalletSupplyPct: fresh * 100 };
     for (const [field, pct] of Object.entries(result.observed)) {

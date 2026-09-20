@@ -52,6 +52,7 @@ describe("GMGN supply evidence", () => {
     const complete = report(); complete.holders![0].maker_token_tags = ["bundler"];
     const result = parse(complete, [complete.holders![0].account_address]);
     expect(result).toMatchObject({ sampledWallets: 1, coverageComplete: false, observed: { bundledSupplyPct: 0 } });
+    expect(result).toMatchObject({ sampleValid: true, sampledSupplyPct: 50, largestObservedHolderPct: 50, top10ObservedPct: 50 });
   });
   it("keeps missing funding, wallet timestamps and classifications unknown", () => {
     for (const mutation of [
@@ -82,7 +83,7 @@ describe("GMGN supply evidence", () => {
       (r: GmgnReport) => { r.holders![1].address = r.holders![0].address; },
       (r: GmgnReport) => { r.holders![0].amount_percentage = "0.9"; },
       (r: GmgnReport) => { r.holders![0].balance = -1; },
-    ]) { const r = report(); mutation(r); expect(parse(r).bundledSupplyPct).toBeUndefined(); }
+    ]) { const r = report(); mutation(r); expect(parse(r).bundledSupplyPct).toBeUndefined(); expect(parse(r).sampleValid).not.toBe(true); }
   });
   it("requires explicit authority booleans and preserves aggregate insider risk", () => {
     const r = report(); r.security.renounced_mint = "true";

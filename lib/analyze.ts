@@ -46,7 +46,9 @@ export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {
   const [holders, traders] = await Promise.all([getHolderMetrics(launch.mint, {
     creator: launch.creator || stonk.creator,
     excludeTokenAccounts: [...new Set(excludedTokenAccounts)],
-  }).catch(() => ({ holders: 0, sampleComplete: false, poolExclusionKnown: excludedTokenAccounts.length > 0 })),
+  }).catch((error: unknown) => ({ holders: 0, sampleComplete: false, poolExclusionKnown: excludedTokenAccounts.length > 0,
+    error: error instanceof Error && /^Helius RPC \w+ failed: \d+$/.test(error.message)
+      ? error.message : "Helius holder data unavailable" })),
     getTraderMetrics(launch.poolState, launch.mint, launch.baseVault || excludedTokenAccounts[0], launch.launchedAt),
   ]);
 

@@ -1,5 +1,5 @@
 import type { Snapshot } from "./types";
-import { novelConceptQualified, observationBlockers, positiveAlertBlockers, walletThresholdRisks } from "./alert-policy";
+import { novelConceptQualified, observationBlockers, partialObservationEvidence, positiveAlertBlockers, walletThresholdRisks } from "./alert-policy";
 import { WALLET_LIMITS } from "./constants";
 
 const money = (n?: number) => n == null || !Number.isFinite(n) ? "ukjent"
@@ -28,6 +28,8 @@ function riskSummary(s: Snapshot): string[] {
   if (s.risks.some(r => r.includes("holder base fell"))) reasons.push("antall eiere falt over 30%");
   if (s.risks.some(r => r.includes("near-complete round trip"))) reasons.push("nesten hele oppgangen er reversert");
   if (w.verification === "RISKY" && !reasons.length) reasons.push("risikofunn fra walletkontrollen");
+  if (s.status === "OBSERVATION" && partialObservationEvidence(s)
+    && (!s.holders.sampleComplete || !w.graphChecked)) reasons.push("utsteder, øvrige eiere og insiderkoblinger ikke fullt kontrollert");
   if (s.novelty?.duplicate) reasons.push("ligner en tidligere lansering");
   if (s.narrative.score < 3 || !s.narrative.pairFit) reasons.push(s.status === "OBSERVATION"
     ? "navnekobling til paret ikke bekreftet" : `parmatch ${s.narrative.score}/5, krever minst 3/5 og begrunnet kobling`);
@@ -57,11 +59,13 @@ export function formatAlert(s: Snapshot, options: { demo?: boolean; candidate?: 
   const volume = s.mode === "FLASH" ? s.pair.volume5m : s.mode === "BUILD" ? s.pair.volume1h : s.pair.volume24h;
   const window = s.mode === "FLASH" ? "5m" : s.mode === "BUILD" ? "1t" : "24t";
   const holderCount = !s.holders.checkedAt ? "ukjent" : `${s.holders.sampleComplete ? "" : "minst "}${s.holders.holders}`;
+  const holderLine = observation && !s.holders.checkedAt && partialObservationEvidence(s)
+    ? `Eierutvalg ${s.wallet.gmgn!.sampledWallets}/${s.wallet.gmgn!.expectedWallets}` : `Eiere ${holderCount}`;
   const lines = [
     `${options.demo ? "🧪 TEST · " : icon + " "}${label} · ${token} / ${quote}`,
     "",
     `MC ${money(s.pair.marketCap ?? s.pair.fdv)} · Likviditet ${money(s.pair.liquidityUsd)}`,
-    `Volum ${window} ${money(volume)} · Eiere ${holderCount}`,
+    `Volum ${window} ${money(volume)} · ${holderLine}`,
     `${observation && novelConceptQualified(s) ? `Originalitet ${s.novelty!.score}/5 i Stonk-utvalget` : `Parmatch ${s.narrative.score}/5`} · Alder ${age(s.ageMinutes)}`,
     risky ? "⛔ Risikokrav brutt" : observation ? "⚠️ Ufullstendig verifisert – vurder manuelt" : blockers.length ? "⏳ Kontroller ufullstendige" : "✓ Obligatoriske kontroller bestått ved siste sjekk",
   ];
