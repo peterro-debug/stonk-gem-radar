@@ -1,0 +1,75 @@
+name: Verify Stonk pair radar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Live historical pair smoke test
+        shell: bash
+        run: |
+          node <<'NODE'
+          const cases = [
+            {
+              label: "PEPE",
+              mint: "PEPEqnuuCDbBC89p1u9vpnP1KQ2oj1xTcQBsjt9X55m",
+              expectedFirstMint: "HgcxVs6kJhPAaGqnPNGaa7zYgNT49hJrLufiqcNMuYZT",
+            },
+            {
+              label: "BLACKBERRY",
+              mint: "BBosJLw8ZzoATiEyywiifx7AgmrD2Cm3XjFWbhbRhChy",
+            },
+          ];
+
+          const base = "https://www.stonkfun.xyz/api/public/v1";
+          async function page(quoteMint, pageNo) {
+            const u = new URL(base + "/tokens");
+            u.searchParams.set("quoteMint", quoteMint);
+            u.searchParams.set("sort", "newest");
+            u.searchParams.set("page", String(pageNo));
+            u.searchParams.set("pageSize", "100");
+            const res = await fetch(u, { headers: { accept: "application/json" } });
+            if (!res.ok) throw new Error(`${quoteMint}: HTTP ${res.status}`);
+            const body = await res.json();
+            const rows = body?.data?.tokens;
+            if (!Array.isArray(rows)) throw new Error(`${quoteMint}: invalid token feed`);
+            return { rows, total: Number(body?.data?.pagination?.total ?? rows.length) };
+          }
+
+          for (const c of cases) {
+            const firstPage = await page(c.mint, 1);
+            const lastPageNo = Math.max(1, Math.ceil(firstPage.total / 100));
+            const pages = [firstPage];
+            if (lastPageNo > 1) pages.push(await page(c.mint, lastPageNo));
+            if (lastPageNo > 2 && pages.at(-1).rows.length < 3) pages.push(await page(c.mint, lastPageNo - 1));
+            const rows = [...new Map(pages.flatMap(p => p.rows).map(r => [r.mint, r])).values()]
+              .filter(r => r?.mint && Number.isFinite(Date.parse(r.createdAt || "")))
+              .sort((a,b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.mint.localeCompare(b.mint));
+            const firstThree = rows.slice(0, 3);
+            if (firstThree.length < 3) throw new Error(`${c.label}: fewer than 3 historical launches found`);
+            if (!firstThree.every(r => r.quote?.mint === c.mint)) throw new Error(`${c.label}: quoteMint mismatch`);
+            console.log(JSON.stringify({
+              label: c.label,
+              total: firstPage.total,
+              firstThree: firstThree.map((r,i) => ({rank:i+1,mint:r.mint,name:r.name,symbol:r.symbol,createdAt:r.createdAt}))
+            }, null, 2));
+            if (c.expectedFirstMint && firstThree[0].mint !== c.expectedFirstMint) {
+              throw new Error(`${c.label}: expected FEELSGOOD mint to be #1, got ${firstThree[0].mint}`);
+            }
+          }
+          NODE
