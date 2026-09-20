@@ -1,3 +1,4 @@
+import type { FttWatch } from "./ftt-watch";
 import { containsPhrase, quoteAliases } from "./name-fit";
 import type { PairEvent, QuoteMeta } from "./types";
 import type { XCursor, XPost } from "./x-feed";
@@ -55,6 +56,7 @@ export type PairLaunchAlert = {
 
 export type PairMonitorState = {
   version: 1;
+  fttWatch?: FttWatch;
   initializedAt?: number;
   knownPairs: QuoteMeta[];
   events: PairEvent[];
