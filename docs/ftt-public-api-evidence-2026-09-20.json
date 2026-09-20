@@ -1,0 +1,86 @@
+{
+  "description": "Selected response fields transcribed from the public Stonk API diagnostic job logs. This is an evidence extract, not a complete raw HTTP capture or an independent on-chain audit.",
+  "sourceJobs": [
+    "https://github.com/peterro-debug/stonk-gem-radar/actions/runs/35535623567/job/106144011094",
+    "https://github.com/peterro-debug/stonk-gem-radar/actions/runs/35535673301/job/106144145191",
+    "https://github.com/peterro-debug/stonk-gem-radar/actions/runs/35535716678/job/106144263032"
+  ],
+  "registry": {
+    "url": "https://www.stonkfun.xyz/api/public/v1/pairs",
+    "observedAt": "2026-09-20T20:28:52.847Z",
+    "http": 200,
+    "returnedPairCount": 521,
+    "selectedPair": {
+      "mint": "EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv",
+      "symbol": "FTT",
+      "name": "FTX Token",
+      "decimals": 8,
+      "logoUrl": "/api/asset/quote-logo/EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv?v=02b61d9f",
+      "category": "custom",
+      "categoryLabel": "Custom",
+      "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "launchable": true,
+      "symbolAmbiguous": false,
+      "launchLabReady": true
+    }
+  },
+  "filteredRegistry": {
+    "url": "https://www.stonkfun.xyz/api/public/v1/pairs?launchable=true&launchLabReady=true",
+    "observedAt": "2026-09-20T20:28:52.857Z",
+    "http": 200,
+    "returnedPairCount": 495,
+    "sameFttPairPresent": true
+  },
+  "exactQuoteLaunchChecks": [
+    {
+      "url": "https://www.stonkfun.xyz/api/public/v1/tokens?quoteMint=EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv&sort=newest&page=1&pageSize=3",
+      "observedAt": "2026-09-20T20:28:52.913Z",
+      "http": 200,
+      "data": {"tokens": [], "pagination": {"page": 1, "pageSize": 3, "total": 0, "totalPages": 1}, "network": "mainnet-beta"}
+    },
+    {
+      "url": "https://www.stonkfun.xyz/api/public/v1/tokens?quoteMint=EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv&sort=volume&page=1&pageSize=3",
+      "observedAt": "2026-09-20T20:29:06.699Z",
+      "http": 200,
+      "data": {"tokens": [], "pagination": {"page": 1, "pageSize": 3, "total": 0, "totalPages": 1}, "network": "mainnet-beta"}
+    },
+    {
+      "url": "https://www.stonkfun.xyz/api/public/v1/tokens?quoteMint=EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv&sort=newest&page=1&pageSize=3",
+      "observedAt": "2026-09-20T20:29:44.651Z",
+      "http": 200,
+      "body": {"data": {"tokens": [], "pagination": {"page": 1, "pageSize": 3, "total": 0, "totalPages": 1}, "network": "mainnet-beta"}, "meta": {"generatedAt": "2026-09-20T20:29:44.609Z"}}
+    }
+  ],
+  "fttPricing": {
+    "url": "https://www.stonkfun.xyz/api/public/v1/launchlab/pricing?quoteMint=EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv",
+    "observedAt": ["2026-09-20T20:28:52.992Z", "2026-09-20T20:29:44.328Z"],
+    "httpBothChecks": 503,
+    "error": {"code": "service_unavailable", "message": "Pricing is unavailable right now. Try again shortly.", "retryable": true, "retryAfterSeconds": 30}
+  },
+  "pricingControls": [
+    {"symbol": "SOL", "mint": "So11111111111111111111111111111111111111112", "observedAt": "2026-09-20T20:29:44.443Z", "http": 200, "returnedKeys": ["quote", "raise", "marketCap", "prices", "curve", "platform", "curveRule", "modes"], "curveConfigId": "6s1xP3hpbAfFoNtUNF8mfHsjr2Bd97JxFJRWLbL6aHuX"},
+    {"symbol": "PEPE", "mint": "PEPEqnuuCDbBC89p1u9vpnP1KQ2oj1xTcQBsjt9X55m", "observedAt": "2026-09-20T20:29:44.501Z", "http": 200, "returnedKeys": ["quote", "raise", "marketCap", "prices", "curve", "platform", "curveRule", "modes"], "curveConfigId": "3kP4fvZE5tXKituTu3TT12r2LXuKNAP1Wfq5LvtYZJJu"}
+  ],
+  "globalConfig": {
+    "url": "https://www.stonkfun.xyz/api/public/v1/stats",
+    "observedAt": "2026-09-20T20:28:52.897Z",
+    "http": 200,
+    "config": {"graduationMarketCapUsd": 40000, "aboutToGraduateMarketCapUsd": 32000, "rewardLaunchesEnabled": true, "pumpLaunchesEnabled": false, "apiLaunchesEnabled": true, "devBuysEnabled": true, "paidLaunchesEnabled": false, "launchLabEnabled": true}
+  },
+  "nameSearchExamples": {
+    "sourceObservedAt": "2026-09-20T20:27:56.291Z",
+    "note": "Name search matches do not establish FTT quote pairing. These are selected examples, not all search results.",
+    "rows": [
+      {"mint": "AANMsEPfUUvSrQL64b5uxP5Y3fFpxTQDzMUshykM85fM", "name": "Fake Token Exchange", "symbol": "FTX", "quoteSymbol": "SOL", "quoteMint": "So11111111111111111111111111111111111111112"},
+      {"mint": "5grPHqUPXqzHJxvQnXCZ1LbTtSVig9FHXM9nRmoFSTNK", "name": "FTT COIN", "symbol": "FTT", "quoteSymbol": "xSOL", "quoteMint": "4sWNB8zGWHkh6UnmwiEtzNxL4XrN7uK9tosbESbJFfVs"},
+      {"mint": "BqHb2iwB67MdvpQUwvR6kTPBeWUwnpicdBx2DSP3tjYo", "name": "SAM BANKMAN FRIED COIN", "symbol": "SBF", "quoteSymbol": "MSFTX", "quoteMint": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX"}
+    ]
+  },
+  "limitations": [
+    "Current registry presence does not date the original listing, mint creation, or activation.",
+    "Zero rows describes Stonk's indexed public token catalogue, not a full independent census of Solana pools.",
+    "The underlying cause and expected duration of FTT's pricing error are not established.",
+    "launchLabReady was reported by Stonk; no separate direct RPC account validation was completed because FTT pricing returned no configuration ID.",
+    "No transaction was constructed, signed, submitted or funded. No production/main bot code or Telegram configuration was changed. Diagnostic workflows are isolated on a Vercel-deployment-disabled branch."
+  ]
+}
