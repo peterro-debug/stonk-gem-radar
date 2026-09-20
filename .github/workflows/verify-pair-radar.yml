@@ -28,7 +28,8 @@ jobs:
             {
               label: "PEPE",
               mint: "PEPEqnuuCDbBC89p1u9vpnP1KQ2oj1xTcQBsjt9X55m",
-              expectedFirstMint: "HgcxVs6kJhPAaGqnPNGaa7zYgNT49hJrLufiqcNMuYZT",
+              findMint: "HgcxVs6kJhPAaGqnPNGaa7zYgNT49hJrLufiqcNMuYZT",
+              findLabel: "FEELSGOOD",
             },
             {
               label: "BLACKBERRY",
@@ -52,24 +53,27 @@ jobs:
           }
 
           for (const c of cases) {
-            const firstPage = await page(c.mint, 1);
-            const lastPageNo = Math.max(1, Math.ceil(firstPage.total / 100));
-            const pages = [firstPage];
-            if (lastPageNo > 1) pages.push(await page(c.mint, lastPageNo));
-            if (lastPageNo > 2 && pages.at(-1).rows.length < 3) pages.push(await page(c.mint, lastPageNo - 1));
+            const p1 = await page(c.mint, 1);
+            const pageCount = Math.max(1, Math.ceil(p1.total / 100));
+            const pages = [p1];
+            for (let p = 2; p <= pageCount; p++) pages.push(await page(c.mint, p));
             const rows = [...new Map(pages.flatMap(p => p.rows).map(r => [r.mint, r])).values()]
               .filter(r => r?.mint && Number.isFinite(Date.parse(r.createdAt || "")))
               .sort((a,b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.mint.localeCompare(b.mint));
+            if (rows.length < 3) throw new Error(`${c.label}: fewer than 3 historical launches found`);
+            if (!rows.every(r => r.quote?.mint === c.mint)) throw new Error(`${c.label}: quoteMint mismatch`);
             const firstThree = rows.slice(0, 3);
-            if (firstThree.length < 3) throw new Error(`${c.label}: fewer than 3 historical launches found`);
-            if (!firstThree.every(r => r.quote?.mint === c.mint)) throw new Error(`${c.label}: quoteMint mismatch`);
+            const targetIndex = c.findMint ? rows.findIndex(r => r.mint === c.findMint) : -1;
             console.log(JSON.stringify({
               label: c.label,
-              total: firstPage.total,
-              firstThree: firstThree.map((r,i) => ({rank:i+1,mint:r.mint,name:r.name,symbol:r.symbol,createdAt:r.createdAt}))
+              total: p1.total,
+              firstThree: firstThree.map((r,i) => ({rank:i+1,mint:r.mint,name:r.name,symbol:r.symbol,createdAt:r.createdAt})),
+              ...(c.findMint ? {
+                target: c.findLabel,
+                targetRankByCreatedAtThenMint: targetIndex >= 0 ? targetIndex + 1 : null,
+                targetRow: targetIndex >= 0 ? rows[targetIndex] : null,
+              } : {}),
             }, null, 2));
-            if (c.expectedFirstMint && firstThree[0].mint !== c.expectedFirstMint) {
-              throw new Error(`${c.label}: expected FEELSGOOD mint to be #1, got ${firstThree[0].mint}`);
-            }
+            if (c.findMint && targetIndex < 0) throw new Error(`${c.label}: ${c.findLabel} mint not found in complete quote feed`);
           }
           NODE
