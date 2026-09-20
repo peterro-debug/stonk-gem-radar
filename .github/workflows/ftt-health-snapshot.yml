@@ -1,0 +1,15 @@
+name: FTT health snapshot
+on:
+  push:
+    branches: [diagnostics/ftx-pair-verification-20260920]
+    paths: [.github/workflows/ftt-health-snapshot.yml]
+permissions: {}
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: |
+          node <<'NODE'
+          (async()=>{const r=await fetch('https://stonk-gem-radar.vercel.app/api/health',{signal:AbortSignal.timeout(20000)});const b=await r.json(),s=b.sources||{};console.log('HEALTH='+JSON.stringify({observedAt:new Date().toISOString(),http:r.status,revision:b.revision,pairMonitor:s.pairMonitor,outdated:s.pairMonitorDeploymentOutdated,checkedAt:s.checkedAt,ftt:s.fttActivationWatch,fttLaunch:s.fttLaunchWatch,notificationError:s.notificationError,registryError:s.registryError,pairLaunchesError:s.pairLaunchesError,configured:{telegram:b.configured?.telegram,chat:b.configured?.telegramChatId,cronAuth:b.configured?.cronAuth}}));})().catch(e=>{console.error(String(e));process.exitCode=1;});
+          NODE
