@@ -57,20 +57,30 @@ jobs:
             const pageCount = Math.max(1, Math.ceil(p1.total / 100));
             const pages = [p1];
             for (let p = 2; p <= pageCount; p++) pages.push(await page(c.mint, p));
-            const rows = [...new Map(pages.flatMap(p => p.rows).map(r => [r.mint, r])).values()]
-              .filter(r => r?.mint && Number.isFinite(Date.parse(r.createdAt || "")))
-              .sort((a,b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.mint.localeCompare(b.mint));
+            const all = [...new Map(pages.flatMap(p => p.rows).map(r => [r.mint, r])).values()]
+              .filter(r => r?.mint && Number.isFinite(Date.parse(r.createdAt || "")));
+            const rows = [...all].sort((a,b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.mint.localeCompare(b.mint));
+            // sort=newest is the server's canonical order. Reversing pages and
+            // rows reconstructs oldest-first without inventing a mint-address
+            // tie-breaker when createdAt values are identical.
+            const apiOldestFirst = [...new Map(
+              [...pages].reverse().flatMap(p => [...p.rows].reverse()).map(r => [r.mint, r])
+            ).values()].filter(r => r?.mint && Number.isFinite(Date.parse(r.createdAt || "")));
             if (rows.length < 3) throw new Error(`${c.label}: fewer than 3 historical launches found`);
             if (!rows.every(r => r.quote?.mint === c.mint)) throw new Error(`${c.label}: quoteMint mismatch`);
             const firstThree = rows.slice(0, 3);
+            const apiFirstThree = apiOldestFirst.slice(0, 3);
             const targetIndex = c.findMint ? rows.findIndex(r => r.mint === c.findMint) : -1;
+            const targetApiIndex = c.findMint ? apiOldestFirst.findIndex(r => r.mint === c.findMint) : -1;
             console.log(JSON.stringify({
               label: c.label,
               total: p1.total,
-              firstThree: firstThree.map((r,i) => ({rank:i+1,mint:r.mint,name:r.name,symbol:r.symbol,createdAt:r.createdAt})),
+              firstThreeByCreatedAtThenMint: firstThree.map((r,i) => ({rank:i+1,mint:r.mint,name:r.name,symbol:r.symbol,createdAt:r.createdAt})),
+              firstThreeByApiFeedOrder: apiFirstThree.map((r,i) => ({rank:i+1,mint:r.mint,name:r.name,symbol:r.symbol,createdAt:r.createdAt})),
               ...(c.findMint ? {
                 target: c.findLabel,
                 targetRankByCreatedAtThenMint: targetIndex >= 0 ? targetIndex + 1 : null,
+                targetRankByApiFeedOrder: targetApiIndex >= 0 ? targetApiIndex + 1 : null,
                 targetRow: targetIndex >= 0 ? rows[targetIndex] : null,
               } : {}),
             }, null, 2));
