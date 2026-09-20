@@ -96,6 +96,17 @@ jobs:
             if [ -n "$body" ]; then
               export BODY="$body"
               export EXPECTED_SHA="$GITHUB_SHA"
+              revision="$(node -e 'const b=JSON.parse(process.env.BODY); process.stdout.write(String(b.revision || ""))')"
+              if [ -n "$revision" ] && [ "$revision" != "$GITHUB_SHA" ]; then
+                # A newer push may reach Production while this older workflow is
+                # still waiting for the monitor handoff. Do not turn that into a
+                # false red build: the newer commit's own workflow owns the check.
+                git fetch --no-tags --depth=100 origin main >/dev/null 2>&1 || true
+                if git cat-file -e "$revision^{commit}" 2>/dev/null && git merge-base --is-ancestor "$GITHUB_SHA" "$revision"; then
+                  echo "Production has superseded this run with descendant revision $revision; deferring to the newer workflow."
+                  exit 0
+                fi
+              fi
               if node -e '
                 const body = JSON.parse(process.env.BODY);
                 const s = body.sources || {};

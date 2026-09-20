@@ -146,6 +146,47 @@ describe("source failures and X cursor", () => {
     expect(second.pairLaunchAlerts.some(a => a.rank === 1 && a.mint !== "seen-first")).toBe(false);
   });
 
+  it("replays the real BlackBerry launch burst through the full registry-to-Telegram ranking path", async () => {
+    vi.stubEnv("X_BEARER_TOKEN", "");
+    const BLACKBERRY = "BBosJLw8ZzoATiEyywiifx7AgmrD2Cm3XjFWbhbRhChy";
+    const blackberry = { mint: BLACKBERRY, symbol: "BB", name: "BlackBerry" };
+    const eventTime = Date.parse("2026-09-19T16:06:30Z");
+    const dateSpy = vi.spyOn(Date, "now").mockReturnValue(eventTime);
+    try {
+      let state = observePairs(emptyMonitorState(), [pepe], eventTime - 60_000).state;
+      state.discoveryLastSuccessAt = eventTime;
+      // Real rows captured from Stonk's quote feed. sort=newest returns this
+      // timestamp-tied burst newest-first; ranking reverses the stable feed order.
+      const blackberryRows = [
+        { mint: "2BfNhvG7AQuibA7pZsJywSYPDwAhVZdUX7pzAfjy4C8s", pool: "bb-p3",
+          name: "BlackBerry", symbol: "BB", quote: blackberry, createdAt: "2026-09-19T16:06:19.729Z" },
+        { mint: "1ABvDeUV4qjo1MjoAts4ieXTZQhALW2Ppw324bHWkos", pool: "bb-p2",
+          name: "Blackberry-Chan", symbol: "BB-Chan", quote: blackberry, createdAt: "2026-09-19T16:06:19.729Z" },
+        { mint: "12GLirh8ij7YXgQYgT74cL2EwzPU1uSdp3QfDAeAsLnC", pool: "bb-p1",
+          name: "RIMCOIN", symbol: "RIM", quote: blackberry, createdAt: "2026-09-19T16:06:19.729Z" },
+      ];
+      vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith("/pairs")) return Response.json({ data: { pairs: [pepe, blackberry] } });
+        if (url.includes(`quoteMint=${BLACKBERRY}`)) {
+          return Response.json({ data: { tokens: blackberryRows, pagination: { total: 3 } } });
+        }
+        return Response.json({ data: { tokens: [] } });
+      }));
+      const result = await pollPairSources(state);
+      expect(result.events).toEqual([expect.objectContaining({ quoteMint: BLACKBERRY, source: "stonk-registry" })]);
+      expect(result.pairLaunchAlerts.map(a => [a.rank, a.mint, a.name])).toEqual([
+        [1, "12GLirh8ij7YXgQYgT74cL2EwzPU1uSdp3QfDAeAsLnC", "RIMCOIN"],
+        [2, "1ABvDeUV4qjo1MjoAts4ieXTZQhALW2Ppw324bHWkos", "Blackberry-Chan"],
+        [3, "2BfNhvG7AQuibA7pZsJywSYPDwAhVZdUX7pzAfjy4C8s", "BlackBerry"],
+      ]);
+      expect(result.state.pairLaunchWatches?.[BLACKBERRY]?.ranked.map(x => x.mint)).toEqual(
+        result.pairLaunchAlerts.map(a => a.mint),
+      );
+    } finally {
+      dateSpy.mockRestore();
+    }
+  });
+
   it("does not retroactively create ranked Telegram alerts for pair events from before this code was watching them", async () => {
     vi.stubEnv("X_BEARER_TOKEN", "");
     const time = Date.now();
