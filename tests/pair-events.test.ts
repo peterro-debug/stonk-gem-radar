@@ -36,7 +36,7 @@ describe("new pair events and name relationships", () => {
       name: "FEELSGOOD", launchedAt: now + 1000, event }, pepe);
     expect(message).toContain("PEPE LAUNCH #1");
     expect(message).toContain("FEELSGOOD / PEPE");
-    expect(message).toContain("Offisiell rekkefølge i Stonk-feeden: #1");
+    expect(message).toContain("STONK-feed rank: #1");
   });
   it("does not mislabel an X confirmation as a new registry addition", () => {
     const event = { quoteMint: "pepe", detectedAt: now, source: "x-announcement" as const,
