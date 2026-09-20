@@ -32,7 +32,7 @@ export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {
   const [stonk, dexPair, wallet, heliusToken, quoteFallback] = await Promise.all([
     getStonkContext(launch.mint, launch.quoteMint),
     getPairMetrics(launch.mint, launch.quoteMint),
-    getWalletRiskMetrics(launch.mint, launch.launchedAt),
+    getWalletRiskMetrics(launch.mint, launch.launchedAt, launch.baseVault ? [launch.baseVault] : []),
     getTokenMeta(launch.mint),
     getQuoteMeta(launch.quoteMint),
   ]);

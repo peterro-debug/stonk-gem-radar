@@ -3,6 +3,7 @@ import type { WalletRiskMetrics } from "./types";
 import { getSolanaTrackerEvidence } from "./solana-tracker";
 import { authorityRevoked, count, isFresh, percentage } from "./risk-validation";
 import { missingWalletChecks, walletThresholdRisks } from "./alert-policy";
+import { getGmgnReport, parseGmgnEvidence } from "./gmgn";
 
 function n(value: unknown): number | undefined {
   if (value == null || value === "" || typeof value === "boolean") return undefined;
@@ -66,14 +67,17 @@ function specialistNumber(report: any, key: string, nestedKey: string): number |
   return percentage(report?.[key]) ?? percentage(report?.[nestedKey]?.supplyPct) ?? percentage(report?.[nestedKey]?.pct);
 }
 
-export async function getWalletRiskMetrics(mint: string, launchedAt: number): Promise<WalletRiskMetrics> {
-  const [rugResponse, specialistResponse, tracker] = await Promise.all([
+export async function getWalletRiskMetrics(mint: string, launchedAt: number, knownPoolAccounts: string[] = []): Promise<WalletRiskMetrics> {
+  const [rugResponse, specialistResponse, tracker, gmgnReport] = await Promise.all([
     rugCheckReport(mint),
     specialistReport(mint, launchedAt),
     getSolanaTrackerEvidence(mint),
+    getGmgnReport(mint),
   ]);
   const now = Date.now();
   const rug = rugResponse?.mint === mint ? rugResponse : undefined;
+  const excludedTokenAccounts = [...new Set([...knownPoolAccounts, ...poolTokenAccounts(rug, mint)])];
+  const gmgn = parseGmgnEvidence(mint, launchedAt, gmgnReport, excludedTokenAccounts, now);
   const specialist = specialistResponse?.mint === mint && isFresh(specialistResponse?.checkedAt, now)
     ? specialistResponse : undefined;
   const max = (...values: Array<number | undefined>) => {
@@ -88,19 +92,20 @@ export async function getWalletRiskMetrics(mint: string, launchedAt: number): Pr
   const graphInsiderWallets = count(rug?.graphInsidersDetected);
   const networkComplete = Array.isArray(rug?.insiderNetworks) && networks.every(network => n(network?.tokenAmount) != null && n(network.tokenAmount)! >= 0);
   const rugInsiderPct = supply && supply > 0 && networkComplete ? percentage((insiderRaw / supply) * 100) : undefined;
-  const insiderSupplyPct = max(rugInsiderPct, tracker.insiderSupplyPct, percentage(specialist?.insiderSupplyPct));
+  const insiderSupplyPct = max(rugInsiderPct, tracker.insiderSupplyPct, gmgn.insiderSupplyPct, percentage(specialist?.insiderSupplyPct));
   const graphChecked = (graphInsiderWallets != null && rugInsiderPct != null)
     || tracker.insiderSupplyPct != null
+    || gmgn.insiderSupplyPct != null
     || ((bool(specialist?.graphChecked) || bool(specialist?.graph?.analyzed)) && percentage(specialist?.insiderSupplyPct) != null);
 
-  const bundledSupplyPct = max(specialistNumber(specialist, "bundledSupplyPct", "bundle"), tracker.bundledSupplyPct);
-  const sniperSupplyPct = max(specialistNumber(specialist, "sniperSupplyPct", "snipers"), tracker.sniperSupplyPct);
-  const commonFunderSupplyPct = specialistNumber(specialist, "commonFunderSupplyPct", "funding");
-  const freshWalletSupplyPct = specialistNumber(specialist, "freshWalletSupplyPct", "freshWallets");
-  const bundleChecked = tracker.bundledSupplyPct != null || ((bool(specialist?.bundleChecked) || bool(specialist?.bundle?.analyzed)) && bundledSupplyPct != null);
-  const sniperChecked = tracker.sniperSupplyPct != null || ((bool(specialist?.sniperChecked) || bool(specialist?.snipers?.analyzed)) && sniperSupplyPct != null);
+  const bundledSupplyPct = max(specialistNumber(specialist, "bundledSupplyPct", "bundle"), tracker.bundledSupplyPct, gmgn.bundledSupplyPct);
+  const sniperSupplyPct = max(specialistNumber(specialist, "sniperSupplyPct", "snipers"), tracker.sniperSupplyPct, gmgn.sniperSupplyPct);
+  const commonFunderSupplyPct = max(specialistNumber(specialist, "commonFunderSupplyPct", "funding"), gmgn.commonFunderSupplyPct);
+  const freshWalletSupplyPct = max(specialistNumber(specialist, "freshWalletSupplyPct", "freshWallets"), gmgn.freshWalletSupplyPct);
+  const bundleChecked = tracker.bundledSupplyPct != null || gmgn.bundledSupplyPct != null || ((bool(specialist?.bundleChecked) || bool(specialist?.bundle?.analyzed)) && bundledSupplyPct != null);
+  const sniperChecked = tracker.sniperSupplyPct != null || gmgn.sniperSupplyPct != null || ((bool(specialist?.sniperChecked) || bool(specialist?.snipers?.analyzed)) && sniperSupplyPct != null);
   // Insider detection is not proof that all early buyers' funding paths were checked.
-  const fundingChecked = (bool(specialist?.fundingChecked) || bool(specialist?.funding?.analyzed)) && commonFunderSupplyPct != null;
+  const fundingChecked = gmgn.commonFunderSupplyPct != null || ((bool(specialist?.fundingChecked) || bool(specialist?.funding?.analyzed)) && commonFunderSupplyPct != null);
 
   const rugRiskRows: any[] = Array.isArray(rug?.risks) ? rug.risks : [];
   for (const risk of rugRiskRows) {
@@ -131,13 +136,14 @@ export async function getWalletRiskMetrics(mint: string, launchedAt: number): Pr
   }
 
   const authority = (field: string, trackerValue: boolean | undefined) => {
-    const values = [authorityRevoked(rug?.token, field), authorityRevoked(rug, field), trackerValue];
+    const gmgnValue = field === "mintAuthority" ? gmgn.mintAuthorityRevoked : gmgn.freezeAuthorityRevoked;
+    const values = [authorityRevoked(rug?.token, field), authorityRevoked(rug, field), trackerValue, gmgnValue];
     return values.includes(false) ? false : values.includes(true) ? true : undefined;
   };
   const result: WalletRiskMetrics = {
     verification: "UNKNOWN",
-    provider: ["RugCheck", tracker.checkedAt && "Solana Tracker", specialist && "specialist gateway"].filter(Boolean).join(" + "),
-    checkedAt: Math.min(now, tracker.checkedAt ?? now, specialist?.checkedAt ?? now),
+    provider: [rug && "RugCheck", tracker.checkedAt && "Solana Tracker", gmgn.checkedAt && "GMGN", specialist && "specialist gateway"].filter(Boolean).join(" + ") || "unavailable",
+    checkedAt: Math.min(now, tracker.checkedAt ?? now, gmgn.checkedAt ?? now, specialist?.checkedAt ?? now),
     graphChecked,
     bundleChecked,
     sniperChecked,
@@ -153,13 +159,16 @@ export async function getWalletRiskMetrics(mint: string, launchedAt: number): Pr
     mintAuthorityRevoked: authority("mintAuthority", tracker.mintAuthorityRevoked),
     freezeAuthorityRevoked: authority("freezeAuthority", tracker.freezeAuthorityRevoked),
     flags,
-    excludedTokenAccounts: poolTokenAccounts(rug, mint),
+    excludedTokenAccounts,
     initialBundledSupplyPct: tracker.initialBundledSupplyPct,
     trackerStatus: tracker.status,
     trackerError: tracker.error,
     trackerRiskScore: tracker.riskScore,
+    gmgn: { status: gmgn.status, error: gmgn.error, sampledWallets: gmgn.sampledWallets,
+      expectedWallets: gmgn.expectedWallets, coverageComplete: gmgn.coverageComplete,
+      missing: gmgn.missing, observedSupplyPct: gmgn.observed },
   };
-  flags.push(...tracker.flags, ...walletThresholdRisks(result));
+  flags.push(...tracker.flags, ...gmgn.flags, ...walletThresholdRisks(result));
   const missing = missingWalletChecks(result, now);
   result.verification = flags.length ? "RISKY" : missing.length ? "UNKNOWN" : "CLEAN";
   result.flags = [...new Set(flags)];

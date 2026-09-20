@@ -50,7 +50,13 @@ Existing launch workflows remain pinned to their original deployment. After depl
 
 RugCheck graph data is checked on every snapshot and detected AMM vaults are removed from holder concentration calculations. `SOLANA_TRACKER_API_KEY` enables the real Solana Tracker Data API: `GET /tokens/{mint}` and `GET /tokens/{mint}/bundlers`, authenticated with `x-api-key`. The dedicated bundle endpoint supplies aggregate percentages despite its capped wallet list. Missing data, mismatched token identity, stale indexed pools, 404, 429, timeout and malformed responses never imply a zero risk measurement.
 
-Solana Tracker adds bundle, sniper and insider measurements. It does **not** establish complete common-funder or fresh-wallet coverage. Those checks require a separately configured specialist source; without it, positive alerts remain blocked. Provider configuration alone is not evidence that a particular token is covered. No accounts, credits or paid upgrades are purchased by the application.
+Solana Tracker adds bundle, sniper and insider measurements. It does **not** establish complete common-funder or fresh-wallet coverage. GMGN or the specialist gateway can supply those additional checks when their token-specific evidence is complete. Provider configuration alone is not evidence that a particular token is covered. No accounts, credits or paid upgrades are purchased by the application.
+
+`GMGN_API_KEY` enables GMGN's read-only OpenAPI (`/v1/token/info`, `/v1/token/security`, `/v1/market/token_top_holders`, authenticated with `X-APIKEY`). No trading permission or private signing key is used. Bundle/sniper/insider holdings are calculated from current wallet balances and classification tags. GMGN's bundle **trading-volume** ratios and fresh-wallet **count** ratio are never treated as supply percentages.
+
+The holder route is capped at 100 rows. The live API rejects ascending order despite the documentation advertising it, and offers no documented pagination. Positive measurements require coverage of the reported holder count, valid balances/tags, and no inconsistent total. Known pool accounts are excluded and cannot inflate verified wallet coverage. More than 100 holders, missing wallet tags, unknown creation times or absent original funding transfers leave the respective checks incomplete. An observed risky concentration can still reject a token from a partial list; a low concentration in a partial list cannot establish that it is safe. Conflicting providers use the highest measured risk, and an active authority overrides a revoked-authority claim.
+
+Common-funder concentration means the largest group of at least two current holders sharing a recorded first native-transfer source. This is a heuristic: an exchange or other shared service can produce a common source without common ownership. Fresh-wallet concentration counts supply in wallets created within 24 hours before the token's launch or afterward. These are provider-indexed wallet heuristics, not a complete forensic trace of all funding hops. The demo reports GMGN coverage and missing fields explicitly. A 429 stops requests for the reported cooldown (five minutes by default); HTTP errors, timeouts and malformed reports never imply zero risk.
 
 Wallet verification has only three outcomes:
 
@@ -108,6 +114,8 @@ TELEGRAM_USERNAME=PelleSuper
 TELEGRAM_CHAT_ID=
 WALLET_RISK_API_URL=
 WALLET_RISK_API_KEY=
+SOLANA_TRACKER_API_KEY=
+GMGN_API_KEY=
 RECENT_PAIR_MINTS=
 DISCOVERY_MAX_STARTS=25
 STONKFUN_API_BASE=https://www.stonkfun.xyz/api/public/v1

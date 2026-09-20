@@ -146,6 +146,11 @@ export type WalletRiskMetrics = {
   trackerStatus?: string;
   trackerError?: string;
   trackerRiskScore?: number;
+  gmgn?: {
+    status: string; error?: string; sampledWallets: number; expectedWallets?: number;
+    coverageComplete: boolean; missing: string[];
+    observedSupplyPct: Partial<Record<"bundledSupplyPct" | "sniperSupplyPct" | "insiderSupplyPct" | "commonFunderSupplyPct" | "freshWalletSupplyPct", number>>;
+  };
 };
 
 export type NarrativeMetrics = {

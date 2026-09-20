@@ -62,6 +62,11 @@ export function summarizeDemo(snapshot: Snapshot) {
       bundleChecked: snapshot.wallet.bundleChecked,
       sniperChecked: snapshot.wallet.sniperChecked,
       fundingChecked: snapshot.wallet.fundingChecked,
+      bundledSupplyPct: snapshot.wallet.bundledSupplyPct,
+      sniperSupplyPct: snapshot.wallet.sniperSupplyPct,
+      commonFunderSupplyPct: snapshot.wallet.commonFunderSupplyPct,
+      freshWalletSupplyPct: snapshot.wallet.freshWalletSupplyPct,
+      gmgn: snapshot.wallet.gmgn,
     },
     verdict: {
       status: snapshot.status,

@@ -36,6 +36,7 @@ export function formatAlert(s: Snapshot): string {
     `${icon} STONK ${s.status} — ${s.mode} — ${ageLabel(s.ageMinutes)} OLD`,
     `${name}${symbol}`,
     s.status === "INVALIDATED" ? "RISIKOVARSEL — tidligere signal er ugyldig"
+      : s.wallet.verification === "RISKY" ? "AVVIST — walletkontrollen har funnet risiko"
       : positiveAlertBlockers(s).length ? "UAVKLART — obligatoriske kontroller mangler"
       : "Obligatoriske kontroller bestått ved siste sjekk",
     `Mint: ${s.launch.mint}`,
@@ -51,6 +52,15 @@ export function formatAlert(s: Snapshot): string {
     `Bundle/sniper/funder/fresh supply: ${pct(s.wallet.bundledSupplyPct)}/${pct(s.wallet.sniperSupplyPct)}/${pct(s.wallet.commonFunderSupplyPct)}/${pct(s.wallet.freshWalletSupplyPct)}`,
     `Narrative: ${s.narrative.score}/5 — ${s.narrative.reason}`,
   ];
+
+  if (s.wallet.gmgn && s.wallet.gmgn.status !== "not-configured") {
+    const g = s.wallet.gmgn;
+    lines.push(`GMGN: ${g.status} | wallets undersøkt: ${g.sampledWallets}/${g.expectedWallets ?? "?"}`);
+    if (g.missing.length) lines.push(`GMGN mangler: ${g.missing.join("; ")}`);
+    if (!g.coverageComplete && g.observedSupplyPct.bundledSupplyPct != null) {
+      lines.push(`Bundleandel observert i utvalget: minst ${pct(g.observedSupplyPct.bundledSupplyPct)}`);
+    }
+  }
 
   if (s.rewards.nativeQuoteReward) {
     lines.push(

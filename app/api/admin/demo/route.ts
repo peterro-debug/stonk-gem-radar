@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
         "DEX Screener — price, volume, liquidity and buy/sell flow",
         "Helius — token metadata and holder distribution",
         "RugCheck — graph and wallet-risk evidence",
+        ...(process.env.GMGN_API_KEY ? ["GMGN — wallet classifications, balances, funding origins and creation timestamps"] : []),
       ],
       analysis: summarizeDemo(snapshot),
       telegram: {
