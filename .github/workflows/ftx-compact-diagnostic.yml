@@ -1,0 +1,20 @@
+name: FTX compact diagnostic
+on:
+  push:
+    branches: [diagnostics/ftx-pair-verification-20260920]
+    paths: [.github/workflows/ftx-compact-diagnostic.yml]
+permissions: {}
+jobs:
+  compact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read public quote data only
+        run: |
+          node <<'NODE'
+          const base='https://www.stonkfun.xyz/api/public/v1';
+          async function get(p){try{const r=await fetch(base+p,{signal:AbortSignal.timeout(15000)});const b=await r.json();return {http:r.status,data:b.data??b}}catch(e){return {error:String(e)}}}
+          const match=p=>/ftx|ftt/i.test((p.name||'')+' '+(p.symbol||''));
+          const slim=t=>({mint:t.mint,name:t.name,symbol:t.symbol,quote:t.quote,createdAt:t.createdAt,status:t.status,market:t.market});
+          (async()=>{const a=await get('/pairs');const b=await get('/pairs?launchable=true&launchLabReady=true');const p=a.data?.pairs;const q=b.data?.pairs;const m=Array.isArray(p)?p.filter(match):null;const out={observedAt:new Date().toISOString(),registry:{http:a.http,error:a.error,keys:Object.keys(a.data||{}),count:p?.length,pagination:a.data?.pagination,matches:m},ready:{http:b.http,error:b.error,count:q?.length,matches:Array.isArray(q)?q.filter(match):null},launches:[],names:[]};for(const t of m||[]){for(const sort of ['newest','volume']){const r=await get('/tokens?quoteMint='+encodeURIComponent(t.mint)+'&sort='+sort+'&page=1&pageSize=5');out.launches.push({quoteMint:t.mint,sort,http:r.http,error:r.error,pagination:r.data?.pagination,rows:r.data?.tokens?.map(slim)});}}for(const name of ['FTX','FTT']){const r=await get('/tokens?q='+name+'&sort=newest&page=1&pageSize=3');out.names.push({name,http:r.http,error:r.error,pagination:r.data?.pagination,rows:r.data?.tokens?.map(slim)});}console.log('FTX_RESULT='+JSON.stringify(out));})().catch(console.error);
+          NODE
