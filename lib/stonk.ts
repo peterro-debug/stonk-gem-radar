@@ -239,17 +239,34 @@ export async function listFirstPairLaunchesSince(quoteMint: string, since: numbe
   }
   const total = first.total!;
   const lastPage = Math.max(1, Math.ceil(total / 100));
-  const rows: StonkTokenRow[] = [];
+  // /tokens?sort=newest is canonical newest-first. To reconstruct the true
+  // oldest-first feed across page boundaries, read oldest pages first and
+  // reverse the rows inside each page. Sorting tied timestamps afterwards
+  // would destroy the server's stable feed order.
+  const pages: StonkTokenRow[][] = [];
+  const oldestFirst = () => {
+    const seen = new Set<string>();
+    const out: StonkTokenRow[] = [];
+    for (const batch of pages) {
+      for (const row of [...batch].reverse()) {
+        if (!row.mint || seen.has(row.mint)) continue;
+        const created = Date.parse(row.createdAt || "");
+        if (!Number.isFinite(created) || created < since) continue;
+        seen.add(row.mint);
+        out.push(row);
+      }
+    }
+    return out;
+  };
   for (let page = lastPage; page >= Math.max(1, lastPage - 4); page--) {
     const batch = await pairLaunchPage(quoteMint, page, 100);
-    rows.push(...batch.rows);
-    const ranked = firstPairLaunchesFromRows(rows, since, limit);
-    if (ranked.length >= limit || batch.rows.some(row => Date.parse(row.createdAt || "") < since)) return ranked;
+    pages.push(batch.rows);
+    const ranked = oldestFirst();
+    if (ranked.length >= limit || batch.rows.some(row => Date.parse(row.createdAt || "") < since)) {
+      return ranked.slice(0, limit);
+    }
   }
-  // If the activation boundary is much newer than the oldest pages, page 1
-  // still gives us the freshest candidates without claiming missing ranks.
-  rows.push(...first.rows);
-  return firstPairLaunchesFromRows(rows, since, limit);
+  return oldestFirst().slice(0, limit);
 }
 
 let catalogueCache: { expiresAt: number; promise: Promise<StonkTokenRow[]> } | undefined;

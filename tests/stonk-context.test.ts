@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { getStonkContext } from "@/lib/stonk";
+import { getStonkContext, listFirstPairLaunchesSince } from "@/lib/stonk";
 
 afterEach(() => vi.unstubAllGlobals());
 it("reads the creator from matching launch detail and marks incomplete pair catalogues honestly", async () => {
@@ -31,4 +31,20 @@ it("compares recent and leading windows on established pairs without claiming fu
   expect((await getStonkContext("mint-0", "quote")).catalogue).toMatchObject({ pairComparisonReady: true, pairCoverageComplete: false });
   leadersFail = true;
   expect((await getStonkContext("mint-0", "quote")).catalogue.pairComparisonReady).toBe(false);
+});
+
+
+it("preserves canonical STONK feed order for tied timestamps across pagination", async () => {
+  const createdAt = "2026-09-18T21:21:08.245Z";
+  const mk = (mint: string) => ({ mint, pool: `pool-${mint}`, quote: { mint: "quote" }, createdAt });
+  // Newest-first API: page 1 is newer in feed order; page 2 is the oldest chunk.
+  // Oldest-first canonical order must therefore be reverse(page2), then reverse(page1).
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+    const page = new URL(url).searchParams.get("page");
+    if (page === "1") return Response.json({ data: { tokens: [mk("new-2"), mk("new-1")], pagination: { total: 150 } } });
+    if (page === "2") return Response.json({ data: { tokens: [mk("old-2"), mk("old-1")], pagination: { total: 150 } } });
+    return Response.json({ data: { tokens: [] } });
+  }));
+  const first = await listFirstPairLaunchesSince("quote", 0, 3);
+  expect(first.map(row => row.mint)).toEqual(["old-1", "old-2", "new-1"]);
 });
