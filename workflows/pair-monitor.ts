@@ -1,7 +1,7 @@
 import { createHook, getWorkflowMetadata, getWritable, sleep, FatalError } from "workflow";
 import { start } from "workflow/api";
 import { listQuotePairs } from "@/lib/pairs";
-import { listRecentLaunches, stonkRowToLaunch } from "@/lib/stonk";
+import { listPairLaunches, listRecentLaunches, stonkRowToLaunch } from "@/lib/stonk";
 import { activePairEvent, announcementEvents, emptyMonitorState, EVENT_WINDOW_MS, formatPairEvent, observePairs,
   PAIR_MONITOR_TOKEN, type PairMonitorState } from "@/lib/pair-events";
 import { pollOfficialX } from "@/lib/x-feed";
@@ -43,21 +43,69 @@ export async function pollPairSources(previous: PairMonitorState) {
   }
   state.events = state.events.filter(event => now - event.detectedAt <= EVENT_WINDOW_MS);
 
+  // Critical path for newly enabled main/quote pairs. This is deliberately
+  // independent from the high-volume global launch feed, so a global backlog
+  // cannot hide the first launches against a fresh pair such as PEPE/JEANPHIL.
+  const activePairEvents = [...new Map(
+    state.events
+      .filter(event => now >= event.detectedAt && now - event.detectedAt <= EVENT_WINDOW_MS)
+      .sort((a, b) => b.detectedAt - a.detectedAt)
+      .map(event => [event.quoteMint, event]),
+  ).values()].slice(0, 10);
+  const pairFeeds = await Promise.allSettled(activePairEvents.map(async event => ({
+    event,
+    rows: await listPairLaunches(event.quoteMint),
+  })));
+  const pairCandidates: Launch[] = [];
+  let pairFailures = 0;
+  for (const result of pairFeeds) {
+    if (result.status === "rejected") { pairFailures += 1; continue; }
+    const { event, rows } = result.value;
+    for (const row of rows) {
+      const launch = stonkRowToLaunch(row);
+      if (!launch || launch.quoteMint !== event.quoteMint || state.seenLaunches[launch.mint]) continue;
+      // Allow a small indexing race where a launch can appear just before the
+      // registry poll that noticed the newly enabled main pair.
+      if (launch.launchedAt < event.detectedAt - 5 * 60_000 || launch.launchedAt > now + 60_000) continue;
+      pairCandidates.push({ ...launch, pairEvent: event });
+    }
+  }
+  if (activePairEvents.length) {
+    if (pairFailures < activePairEvents.length) state.pairLaunchesLastSuccessAt = now;
+    state.pairLaunchesError = pairFailures
+      ? `${pairFailures}/${activePairEvents.length} active main-pair feeds unavailable`
+      : undefined;
+  } else {
+    state.pairLaunchesError = undefined;
+  }
+
   const launches: Launch[] = [];
+  const pairUnique = [...new Map(pairCandidates.map(launch => [launch.mint, launch])).values()]
+    .sort((a, b) => a.launchedAt - b.launchedAt);
+  const pairSelected = pairUnique.slice(0, 25);
+  launches.push(...pairSelected);
+  for (const launch of pairSelected) state.seenLaunches[launch.mint] = now;
+
   if (tokens.status === "fulfilled") {
     const candidates = [...new Map(tokens.value.map(row => [row.mint, row])).values()]
       .map(stonkRowToLaunch).filter((launch): launch is Launch => Boolean(launch))
       .filter(launch => launch.launchedAt >= since && launch.launchedAt <= now + 60_000 && !state.seenLaunches[launch.mint])
       .sort((a, b) => a.launchedAt - b.launchedAt);
-    for (const launch of candidates.slice(0, 25)) {
+    const remainingSlots = Math.max(0, 25 - pairSelected.length);
+    const selected = candidates.slice(0, remainingSlots);
+    for (const launch of selected) {
       launches.push({ ...launch, pairEvent: activePairEvent(state.events, launch.quoteMint, now) });
       state.seenLaunches[launch.mint] = now;
     }
-    state.lastStartedCount = launches.length;
     state.launchesLastSuccessAt = now;
     state.launchesError = undefined;
-    // Preserve overlap for delayed indexing and retain the cursor while backlogged.
-    state.launchCursor = candidates.length > 25 ? since : now - 5 * 60_000;
+    // Advance through a backlog instead of pinning the cursor forever. A small
+    // overlap remains because the next query uses >= and seenLaunches dedupes.
+    if (candidates.length > selected.length) {
+      if (selected.length) state.launchCursor = Math.max(since, selected[selected.length - 1].launchedAt);
+    } else {
+      state.launchCursor = now - 5 * 60_000;
+    }
   } else state.launchesError = errorText(tokens.reason);
   if (discoveryDue) {
     if (discovery.status === "fulfilled") {
@@ -124,7 +172,7 @@ export async function pairMonitorWorkflow(seed?: PairMonitorState, predecessor?:
         const queued = await enqueueLaunch(launch);
         if (queued.error) {
           delete state.seenLaunches[launch.mint];
-          state.launchCursor = Math.min(state.launchCursor ?? launch.launchedAt, launch.launchedAt);
+          if (!launch.pairEvent) state.launchCursor = Math.min(state.launchCursor ?? launch.launchedAt, launch.launchedAt);
           state.launchesError = queued.error;
         }
       }

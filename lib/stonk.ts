@@ -200,6 +200,12 @@ export async function listStonkTokens(sort: "newest" | "volume" | "marketCap", p
   return Array.isArray(body?.data?.tokens) ? body.data.tokens : [];
 }
 
+export async function listPairLaunches(quoteMint: string, pageSize = 100): Promise<StonkTokenRow[]> {
+  const body = await getJson(`/tokens?quoteMint=${encodeURIComponent(quoteMint)}&sort=newest&page=1&pageSize=${pageSize}`);
+  if (!Array.isArray(body?.data?.tokens)) throw new Error("Stonk pair launch feed unavailable");
+  return body.data.tokens;
+}
+
 let catalogueCache: { expiresAt: number; promise: Promise<StonkTokenRow[]> } | undefined;
 export function recentConceptCatalogue(): Promise<StonkTokenRow[]> {
   if (!catalogueCache || catalogueCache.expiresAt < Date.now()) {
@@ -212,15 +218,18 @@ export function recentConceptCatalogue(): Promise<StonkTokenRow[]> {
 
 export async function listRecentLaunches(since: number): Promise<StonkTokenRow[]> {
   const rows: StonkTokenRow[] = [];
-  for (let page = 1; page <= 5; page++) {
+  const configured = Number(process.env.STONK_LAUNCH_SCAN_MAX_PAGES || 25);
+  const maxPages = Number.isFinite(configured) ? Math.max(1, Math.min(50, Math.floor(configured))) : 25;
+  for (let page = 1; page <= maxPages; page++) {
     const body = await getJson(`/tokens?sort=newest&page=${page}&pageSize=100`);
     if (!Array.isArray(body?.data?.tokens)) throw new Error("Stonk launch feed unavailable");
     const batch: StonkTokenRow[] = body.data.tokens;
     rows.push(...batch);
     if (batch.length < 100 || batch.some(row => Date.parse(row.createdAt || "") < since)) return rows;
   }
-  // Don't silently advance the cursor through an unobserved burst of launches.
-  throw new Error("Stonk launch feed exceeds 500-row scan window");
+  // Fail loudly rather than skipping unobserved global launches. New main-pair
+  // launches are scanned independently, so a global burst cannot block them.
+  throw new Error(`Stonk launch feed exceeds ${maxPages * 100}-row scan window`);
 }
 
 export function stonkRowToLaunch(row: StonkTokenRow): Launch | undefined {

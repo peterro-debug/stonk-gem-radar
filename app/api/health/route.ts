@@ -18,6 +18,8 @@ export async function GET() {
       registryError: monitor.state?.registryError,
       launchesLastSuccessAt: monitor.state?.launchesLastSuccessAt,
       launchesError: monitor.state?.launchesError,
+      pairLaunchesLastSuccessAt: monitor.state?.pairLaunchesLastSuccessAt,
+      pairLaunchesError: monitor.state?.pairLaunchesError,
       discoveryLastSuccessAt: monitor.state?.discoveryLastSuccessAt,
       discoveryError: monitor.state?.discoveryError,
       lastStartedCount: monitor.state?.lastStartedCount,

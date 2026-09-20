@@ -76,6 +76,51 @@ describe("source failures and X cursor", () => {
     expect((await pollPairSources(result.state)).launches).toEqual([]);
     expect(fetcher.mock.calls.filter(([url]) => String(url).includes("sort=volume"))).toHaveLength(0);
   });
+  it("keeps fresh main-pair launches visible even when the global launch feed overflows", async () => {
+    vi.stubEnv("X_BEARER_TOKEN", "");
+    vi.stubEnv("STONK_LAUNCH_SCAN_MAX_PAGES", "2");
+    const time = Date.now();
+    let state = observePairs(emptyMonitorState(), [pepe], time - 120_000).state;
+    state = observePairs(state, [pepe, google], time - 60_000).state;
+    state.discoveryLastSuccessAt = time;
+    const child = { mint: "google-child", pool: "child-pool", quote: google,
+      createdAt: new Date(time - 10_000).toISOString() };
+    const overflow = Array.from({ length: 100 }, (_, i) => ({
+      mint: `global-${i}`, pool: `pool-${i}`, quote: pepe,
+      createdAt: new Date(time - i * 100).toISOString(),
+    }));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/pairs")) return Response.json({ data: { pairs: [pepe, google] } });
+      if (url.includes("quoteMint=google")) return Response.json({ data: { tokens: [child] } });
+      if (url.includes("/tokens?sort=newest")) return Response.json({ data: { tokens: overflow } });
+      return Response.json({ data: { tokens: [] } });
+    }));
+    const result = await pollPairSources(state);
+    expect(result.state.launchesError).toContain("exceeds 200-row scan window");
+    expect(result.state.pairLaunchesLastSuccessAt).toBeGreaterThan(0);
+    expect(result.launches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ mint: "google-child", pairEvent: expect.objectContaining({ quoteMint: "google" }) }),
+    ]));
+  });
+  it("advances the global launch cursor while draining a backlog", async () => {
+    vi.stubEnv("X_BEARER_TOKEN", "");
+    const time = Date.now();
+    let state = observePairs(emptyMonitorState(), [pepe], time - 120_000).state;
+    state = { ...state, launchCursor: time - 60_000, discoveryLastSuccessAt: time };
+    const rows = Array.from({ length: 30 }, (_, i) => ({
+      mint: `fresh-${i}`, pool: `pool-${i}`, quote: pepe,
+      createdAt: new Date(time - (30 - i) * 1000).toISOString(),
+    }));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/pairs")) return Response.json({ data: { pairs: [pepe] } });
+      if (url.includes("/tokens?sort=newest")) return Response.json({ data: { tokens: rows } });
+      return Response.json({ data: { tokens: [] } });
+    }));
+    const result = await pollPairSources(state);
+    expect(result.launches).toHaveLength(25);
+    expect(result.state.launchCursor).toBe(Date.parse(rows[24].createdAt));
+    expect(result.state.launchCursor).toBeGreaterThan(time - 60_000);
+  });
   it("reports X as not configured without making a request", async () => {
     vi.stubEnv("X_BEARER_TOKEN", "");
     vi.stubGlobal("fetch", vi.fn());

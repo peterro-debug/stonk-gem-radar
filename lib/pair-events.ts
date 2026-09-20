@@ -16,9 +16,11 @@ export type PairMonitorState = {
   checkedAt?: number;
   registryLastSuccessAt?: number;
   launchesLastSuccessAt?: number;
+  pairLaunchesLastSuccessAt?: number;
   launchCursor?: number;
   registryError?: string;
   launchesError?: string;
+  pairLaunchesError?: string;
   lastStartedCount?: number;
   discoveryLastSuccessAt?: number;
   discoveryError?: string;
