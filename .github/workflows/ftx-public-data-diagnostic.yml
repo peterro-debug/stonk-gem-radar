@@ -1,0 +1,82 @@
+name: FTX public-data diagnostic
+
+on:
+  push:
+    branches: [diagnostics/ftx-pair-verification-20260920]
+
+permissions: {}
+
+jobs:
+  inspect-public-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Read Stonk registry, readiness and actual quote-linked launches
+        shell: bash
+        run: |
+          node <<'NODE'
+          const BASE = 'https://www.stonkfun.xyz/api/public/v1';
+          const print = (label, value) => console.log(JSON.stringify({ label, observedAt: new Date().toISOString(), value }, null, 2));
+          const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+          async function read(path) {
+            const url = BASE + path;
+            for (let attempt = 0; attempt < 2; attempt++) {
+              try {
+                const response = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(20000) });
+                if (response.status === 429 && attempt === 0) {
+                  await sleep(Math.min(10000, Math.max(1000, Number(response.headers.get('retry-after') || 2) * 1000)));
+                  continue;
+                }
+                const text = await response.text();
+                let body;
+                try { body = JSON.parse(text); } catch { return { url, http: response.status, ok: false, error: 'Response is not JSON', preview: text.slice(0, 200) }; }
+                return { url, http: response.status, ok: response.ok, responseDate: response.headers.get('date'), cacheAge: response.headers.get('age'), data: body.data ?? body, error: body.error };
+              } catch (error) {
+                if (attempt === 0) { await sleep(1500); continue; }
+                return { url, ok: false, error: String(error) };
+              }
+            }
+          }
+          function compactToken(row) {
+            return { mint: row.mint, name: row.name, symbol: row.symbol, quote: row.quote, pool: row.pool, launchpad: row.launchpad, mode: row.mode, createdAt: row.createdAt, graduatedAt: row.graduatedAt, status: row.status, graduationProgress: row.graduationProgress, market: row.market };
+          }
+          async function run() {
+            const [registry, ready, stats] = await Promise.all([
+              read('/pairs'),
+              read('/pairs?launchable=true&launchLabReady=true'),
+              read('/stats'),
+            ]);
+            const pairs = registry.ok && Array.isArray(registry.data?.pairs) ? registry.data.pairs : null;
+            const readyPairs = ready.ok && Array.isArray(ready.data?.pairs) ? ready.data.pairs : null;
+            const matches = pairs?.filter(pair => /ftx|ftt/i.test(`${pair.name || ''} ${pair.symbol || ''}`));
+            print('REGISTRY_HTTP_AND_COVERAGE', { ...registry, data: pairs ? { count: pairs.length, pagination: registry.data.pagination, keys: Object.keys(registry.data), identities: pairs.map(pair => ({ mint: pair.mint, symbol: pair.symbol, name: pair.name, launchable: pair.launchable, launchLabReady: pair.launchLabReady })) } : registry.data });
+            print('FTX_FTT_REGISTRY_MATCHES', matches ?? { status: 'UNKNOWN', reason: 'No valid registry response; this is not evidence of absence' });
+            print('LAUNCHABLE_AND_READY_FILTER', { ...ready, data: readyPairs ? { count: readyPairs.length, matches: readyPairs.filter(pair => /ftx|ftt/i.test(`${pair.name || ''} ${pair.symbol || ''}`)) } : ready.data });
+            print('GLOBAL_PLATFORM_STATUS', stats);
+            for (const pair of matches || []) {
+              const encoded = encodeURIComponent(pair.mint);
+              const [newest, leaders, pricing] = await Promise.all([
+                read(`/tokens?quoteMint=${encoded}&sort=newest&page=1&pageSize=100`),
+                read(`/tokens?quoteMint=${encoded}&sort=volume&page=1&pageSize=100`),
+                read(`/launchlab/pricing?quoteMint=${encoded}`),
+              ]);
+              for (const [label, result] of [['QUOTE_LINKED_NEWEST', newest], ['QUOTE_LINKED_VOLUME_LEADERS', leaders]]) {
+                const rows = result.data?.tokens;
+                print(label, { quoteMint: pair.mint, ...result, data: Array.isArray(rows) ? { pagination: result.data.pagination, allRowsMatchQuote: rows.every(row => row.quote?.mint === pair.mint), tokens: rows.map(compactToken) } : result.data });
+              }
+              print('QUOTE_LAUNCHLAB_PRICING_CONFIG', { quoteMint: pair.mint, ...pricing });
+              const total = Number(newest.data?.pagination?.total);
+              if (newest.ok && Number.isFinite(total) && total > 100) {
+                const oldest = await read(`/tokens?quoteMint=${encoded}&sort=newest&page=${Math.ceil(total / 100)}&pageSize=100`);
+                print('QUOTE_LINKED_OLDEST_PAGE', { quoteMint: pair.mint, ...oldest, data: Array.isArray(oldest.data?.tokens) ? { pagination: oldest.data.pagination, tokens: oldest.data.tokens.map(compactToken) } : oldest.data });
+              }
+            }
+            for (const query of ['FTX', 'FTT']) {
+              const result = await read(`/tokens?q=${query}&sort=newest&page=1&pageSize=25`);
+              print('NAME_SEARCH_NOT_QUOTE_PROOF_' + query, { ...result, data: Array.isArray(result.data?.tokens) ? { pagination: result.data.pagination, tokens: result.data.tokens.map(compactToken) } : result.data });
+            }
+            print('DIAGNOSTIC_SCOPE', 'Only unauthenticated HTTP GET requests to the public Stonk API were performed. No wallet, secrets, trading, Telegram or production configuration was used. Registry absence only describes this successful snapshot, not all historical states.');
+            if (!pairs) process.exitCode = 1;
+          }
+          run().catch(error => { print('FATAL_DIAGNOSTIC_ERROR', String(error)); process.exitCode = 1; });
+          NODE
