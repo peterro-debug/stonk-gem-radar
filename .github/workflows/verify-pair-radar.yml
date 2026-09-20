@@ -77,3 +77,40 @@ jobs:
             if (c.findMint && targetIndex < 0) throw new Error(`${c.label}: ${c.findLabel} mint not found in complete quote feed`);
           }
           NODE
+      - name: Production watchdog smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            body="$(curl -fsS --max-time 15 https://stonk-gem-radar.vercel.app/api/health || true)"
+            if [ -n "$body" ]; then
+              BODY="$body" GITHUB_SHA="$GITHUB_SHA" node <<'NODE' && exit 0 || true
+              const body = JSON.parse(process.env.BODY);
+              const s = body.sources || {};
+              const ok = body.revision === process.env.GITHUB_SHA
+                && s.pairMonitor === "active"
+                && s.pairMonitorDeploymentOutdated === false
+                && Number.isFinite(s.pairLaunchesLastSuccessAt)
+                && !s.pairLaunchesError
+                && Number.isFinite(s.launchesLastSuccessAt)
+                && !s.launchesError;
+              if (!ok) {
+                console.log(JSON.stringify({
+                  revision: body.revision,
+                  expectedRevision: process.env.GITHUB_SHA,
+                  pairMonitor: s.pairMonitor,
+                  deploymentOutdated: s.pairMonitorDeploymentOutdated,
+                  pairLaunchesLastSuccessAt: s.pairLaunchesLastSuccessAt,
+                  pairLaunchesError: s.pairLaunchesError,
+                  launchesLastSuccessAt: s.launchesLastSuccessAt,
+                  launchesError: s.launchesError,
+                }, null, 2));
+                process.exit(1);
+              }
+              console.log("Production monitor is active on this revision; pair-specific and global launch feeds are healthy.");
+              NODE
+            fi
+            sleep 10
+          done
+          echo "Production monitor did not become healthy on the deployed revision in time." >&2
+          exit 1
