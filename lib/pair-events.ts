@@ -188,7 +188,8 @@ function compactUsd(value?: number): string {
 
 export function formatPairMomentumAlert(alert: PairMomentumAlert, quote?: QuoteMeta): string {
   const q = quote?.symbol || quote?.name || alert.quoteMint;
-  const token = alert.name || alert.symbol || alert.mint;
+  const token = alert.name && alert.symbol && alert.name.toUpperCase() !== alert.symbol.toUpperCase()
+    ? `${alert.name} (${alert.symbol})` : alert.name || alert.symbol || alert.mint;
   return [
     `🔥 STONK — ${q} FIRST-200 MOMENTUM`,
     `${token} / ${q}`,
