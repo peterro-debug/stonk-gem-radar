@@ -61,14 +61,35 @@ export async function resolveTelegramChatId(): Promise<string> {
   throw new Error("No unique private Telegram chat update found");
 }
 
-export async function sendTelegram(text: string): Promise<void> {
+type TelegramPresentation = {
+  text: string;
+  parse_mode?: "HTML";
+  reply_markup?: { inline_keyboard: Array<Array<{ text: string; url?: string; copy_text?: { text: string } }>> };
+};
+
+export function telegramPresentation(text: string, mint?: string): TelegramPresentation {
+  if (!mint) return { text };
+  const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const [heading, ...rest] = text.split("\n");
+  return {
+    text: [`<b>${escape(heading)}</b>`, ...rest.map(escape)].join("\n"),
+    parse_mode: "HTML",
+    ...(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) ? { reply_markup: { inline_keyboard: [[
+      { text: "Stonk ↗", url: `https://www.stonkfun.xyz/token/${mint}` },
+      { text: "GMGN ↗", url: `https://gmgn.ai/sol/token/${mint}` },
+      { text: "Kopier adresse", copy_text: { text: mint } },
+    ]] } } : {}),
+  };
+}
+
+export async function sendTelegram(text: string, mint?: string): Promise<void> {
   const token = required("TELEGRAM_BOT_TOKEN");
   const chatId = await resolveTelegramChatId();
   const res = await fetch(`${TG_API}/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(12_000),
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+    body: JSON.stringify({ chat_id: chatId, ...telegramPresentation(text, mint), disable_web_page_preview: true }),
   });
   if (!res.ok) {
     const detail = await res.text();

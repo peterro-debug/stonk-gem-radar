@@ -7,8 +7,8 @@ const profiles = [
   { aliases: ["JUP", "JUPITER"], motifs: ["jup", "jupiter", "jupcat", "jupiter cat", "cat"], compounds: ["jupcat"] },
   { aliases: ["LNKD", "LINKEDIN"], motifs: ["linkedin", "linkedinu", "open to work", "opentowork", "professional network"], compounds: ["linkedinu"] },
   { aliases: ["CARDS"], motifs: ["card", "cards", "psa", "psa10", "pokemon", "pokedex", "collector"] },
-  { aliases: ["ZEC", "ZCASH"], motifs: ["zcash", "privacy", "anon", "shield", "zatoshi", "cypher"] },
-  { aliases: ["XMR", "MONERO"], motifs: ["monero", "privacy", "anon", "ring", "ghost"] },
+  { aliases: ["ZEC", "ZCASH"], motifs: ["zcash", "privacy", "anon", "anonymous", "anonymity", "shield", "zatoshi", "cypher"] },
+  { aliases: ["XMR", "MONERO"], motifs: ["monero", "privacy", "anon", "anonymous", "anonymity", "ring", "ghost"] },
   { aliases: ["BTC", "WBTC", "BITCOIN"], motifs: ["bitcoin", "satoshi", "nakamoto", "orange", "hodl", "bitconnect"] },
   { aliases: ["SOL", "SOLANA"], motifs: ["solana", "toly", "validator", "bonk"] },
   { aliases: ["BONK", "WIF"], motifs: ["bonk", "dog", "inu", "hat", "wif"] },
@@ -18,7 +18,9 @@ const profiles = [
   { aliases: ["TSLA", "TESLA"], motifs: ["tesla", "elon", "cybertruck", "electric car"] },
   { aliases: ["AAPL", "APPLE"], motifs: ["apple", "iphone", "steve jobs", "think different"] },
   { aliases: ["AMZN", "AMAZON"], motifs: ["amazon", "bezos", "prime", "alexa"] },
-  { aliases: ["MSFT", "MICROSOFT"], motifs: ["microsoft", "windows", "clippy", "bill gates"] },
+  // Semantic/product associations; these do not imply token affiliation.
+  { aliases: ["MSFT", "MICROSOFT"], motifs: ["microsoft", "windows", "clippy", "bill gates", "linkedin", "linkedinu", "open to work"] },
+  { aliases: ["DKNG", "DRAFTKINGS"], motifs: ["draftkings", "draft kings", "all in", "allin", "allinu", "jackpot", "parlay", "sportsbook", "poker"] },
 ];
 
 export const normalizeName = (value = "") => value.toLowerCase()

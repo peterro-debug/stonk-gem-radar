@@ -80,6 +80,8 @@ It must return the matching `mint`, a fresh `checkedAt` Unix timestamp in millis
 
 Telegram receives state transitions, not repeated snapshots. Examples:
 
+Messages show the decision first, followed by market cap, liquidity, one relevant volume window, holder count, narrative/pair score, check status and the two leading blockers or risks. The activity score out of 100 and provider diagnostics stay in the analysis record. Token alerts include Stonk/GMGN links and a copy-address button; untrusted names are escaped before HTML formatting. A test or incomplete candidate cannot look like an approved alert. Prior-signal invalidations retain their explicit warning and reason.
+
 - `FLASH → EARLY WATCH → GEM`
 - `BUILD WATCH → RECLAIM`
 - `SKIP → REAWAKENING` when the scheduled discovery pass starts a later monitor

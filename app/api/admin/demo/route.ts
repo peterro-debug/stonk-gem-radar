@@ -24,14 +24,9 @@ export async function POST(req: NextRequest) {
   try {
     const selected = await chooseDemoCandidate();
     const snapshot = await analyzeLaunch(selected.launch);
-    const telegramPreview = [
-      "🧪 DEMO — INGEN HANDEL UTFØRT",
-      "Fersk øyeblikksanalyse fra den samme motoren som live-radaren.",
-      "",
-      formatAlert(snapshot),
-    ].join("\n");
+    const telegramPreview = formatAlert(snapshot, { demo: true });
 
-    await sendTelegram(telegramPreview);
+    await sendTelegram(telegramPreview, snapshot.launch.mint);
 
     return NextResponse.json({
       ok: true,

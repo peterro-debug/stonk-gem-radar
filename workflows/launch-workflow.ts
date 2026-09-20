@@ -16,14 +16,14 @@ async function check(launch: Launch, context: AnalysisContext): Promise<Snapshot
 async function notify(snapshot: Snapshot, everAlerted: boolean): Promise<boolean> {
   "use step";
   if (!maySendAlert(snapshot, everAlerted)) return false;
-  await sendTelegram(formatAlert(snapshot));
+  await sendTelegram(formatAlert(snapshot), snapshot.launch.mint);
   return true;
 }
 
 async function notifyCandidate(snapshot: Snapshot): Promise<boolean> {
   "use step";
   if (positiveAlertBlockers(snapshot, Date.now()).length) return false;
-  await sendTelegram(formatCandidate(snapshot));
+  await sendTelegram(formatCandidate(snapshot), snapshot.launch.mint);
   return true;
 }
 
