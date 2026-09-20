@@ -67,10 +67,27 @@ export function activePairEvent(events: PairEvent[], quoteMint: string, now: num
     && now - event.detectedAt <= EVENT_WINDOW_MS).sort((a, b) => b.detectedAt - a.detectedAt)[0];
 }
 
+export function pairLaunchFeedUrl(quoteMint: string): string {
+  return `https://www.stonkfun.xyz/api/public/v1/tokens?quoteMint=${encodeURIComponent(quoteMint)}&sort=newest&page=1&pageSize=100`;
+}
+
 export function formatPairEvent(event: PairEvent, quote?: QuoteMeta): string {
-  return ["🆕 STONK — NY PARHENDELSE", `${quote?.name || quote?.symbol || event.quoteMint}`,
-    `Kilde: ${event.source === "stonk-registry" ? "Stonks parregister" : "X-annonse, matchet mot parregisteret"}`,
-    event.description, `Oppdaget: ${new Date(event.detectedAt).toISOString()}`,
-    "Radaren følger nye tokens og vurderer navn, marked og wallet-risiko.",
-    "Dette er et oppdagelsesvarsel. Ingen kjøp eller GEM-godkjenning.", event.sourceUrl].join("\n");
+  const display = quote?.name && quote?.symbol && quote.name.toUpperCase() !== quote.symbol.toUpperCase()
+    ? `${quote.name} (${quote.symbol})` : quote?.name || quote?.symbol || event.quoteMint;
+  const registryAddition = event.source === "stonk-registry";
+  return [
+    registryAddition ? "🚨 STONK — NY MAIN PAIR / QUOTE AKTIVERT" : "📣 STONK — MAIN PAIR ANNONSERT / BEKREFTET",
+    display,
+    registryAddition
+      ? "Bekreftet: en ny quote-mint er lagt til i Stonks offisielle pair-register."
+      : "Bekreftet: annonsert på X og matchet mot en quote som finnes i Stonks offisielle pair-register.",
+    `Quote mint: ${event.quoteMint}`,
+    quote?.category ? `Kategori: ${quote.category}` : undefined,
+    `Kilde: ${registryAddition ? "Stonks offisielle /pairs-register" : "X-annonse + Stonks /pairs-register"}`,
+    `Oppdaget av radaren: ${new Date(event.detectedAt).toISOString()}`,
+    `Live nye launches: ${pairLaunchFeedUrl(event.quoteMint)}`,
+    "Radaren følger nye launches mot denne main pairen.",
+    "Dette varslet gjelder quote/main pairen – child-tokens er ikke automatisk godkjent eller kjøpssignaler.",
+    event.sourceUrl,
+  ].filter((line): line is string => Boolean(line)).join("\n");
 }

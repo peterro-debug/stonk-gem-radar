@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { announcementEvents, emptyMonitorState, observePairs, activePairEvent } from "@/lib/pair-events";
+import { announcementEvents, emptyMonitorState, observePairs, activePairEvent, formatPairEvent, pairLaunchFeedUrl } from "@/lib/pair-events";
 import { nameAssociation } from "@/lib/name-fit";
 import { pollOfficialX } from "@/lib/x-feed";
 import { pollPairSources } from "@/workflows/pair-monitor";
@@ -17,6 +17,24 @@ describe("new pair events and name relationships", () => {
     expect(next.added.map(e => e.quoteMint)).toEqual(["google"]);
     const disappeared = observePairs(next.state, [pepe], now + 120_000);
     expect(observePairs(disappeared.state, [pepe, google], now + 180_000).added).toEqual([]);
+  });
+  it("labels only registry additions as a new main pair and includes the exact filtered launch feed", () => {
+    const event = { quoteMint: "pepe", detectedAt: now, source: "stonk-registry" as const,
+      sourceUrl: "https://www.stonkfun.xyz", description: "Pepe appeared in the official pair registry" };
+    const message = formatPairEvent(event, { ...pepe, category: "custom" });
+    expect(message).toContain("NY MAIN PAIR / QUOTE AKTIVERT");
+    expect(message).toContain("Quote mint: pepe");
+    expect(message).toContain("Kategori: custom");
+    expect(message).toContain(pairLaunchFeedUrl("pepe"));
+    expect(message).toContain("quoteMint=pepe&sort=newest&page=1&pageSize=100");
+    expect(message).not.toContain("%26sort");
+  });
+  it("does not mislabel an X confirmation as a new registry addition", () => {
+    const event = { quoteMint: "pepe", detectedAt: now, source: "x-announcement" as const,
+      sourceUrl: "https://x.com/i/status/123", description: "You can now pair with PEPE" };
+    const message = formatPairEvent(event, pepe);
+    expect(message).toContain("MAIN PAIR ANNONSERT / BEKREFTET");
+    expect(message).not.toContain("NY MAIN PAIR / QUOTE AKTIVERT");
   });
   it("connects Google It, Feeling Lucky and FEELSGOOD to their proper assets", () => {
     expect(nameAssociation({ name: "Google It", symbol: "GOOGLEIT" }, google).matched).toBe(true);

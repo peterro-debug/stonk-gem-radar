@@ -83,7 +83,7 @@ async function enqueueLaunch(launch: Launch) {
 
 async function notifyPair(event: PairEvent, quote?: QuoteMeta) {
   "use step";
-  try { await sendTelegram(formatPairEvent(event, quote)); return true; }
+  try { await sendTelegram(formatPairEvent(event, quote), event.quoteMint); return true; }
   catch { return false; }
 }
 
