@@ -5,6 +5,21 @@ import type { XCursor, XPost } from "./x-feed";
 export const EVENT_WINDOW_MS = 48 * 60 * 60_000;
 export const PAIR_MONITOR_TOKEN = "stonk-pair-monitor:v1";
 
+export type PairLaunchWatch = {
+  eventDetectedAt: number;
+  notifiedMints: Record<string, number>;
+};
+
+export type PairLaunchAlert = {
+  rank: 1 | 2 | 3;
+  quoteMint: string;
+  mint: string;
+  name?: string;
+  symbol?: string;
+  launchedAt: number;
+  event: PairEvent;
+};
+
 export type PairMonitorState = {
   version: 1;
   initializedAt?: number;
@@ -21,6 +36,7 @@ export type PairMonitorState = {
   registryError?: string;
   launchesError?: string;
   pairLaunchesError?: string;
+  pairLaunchWatches?: Record<string, PairLaunchWatch>;
   lastStartedCount?: number;
   discoveryLastSuccessAt?: number;
   discoveryError?: string;
@@ -89,7 +105,22 @@ export function formatPairEvent(event: PairEvent, quote?: QuoteMeta): string {
     `Oppdaget av radaren: ${new Date(event.detectedAt).toISOString()}`,
     `Live nye launches: ${pairLaunchFeedUrl(event.quoteMint)}`,
     "Radaren følger nye launches mot denne main pairen.",
+    "Telegram varsler separat når launch #1, #2 og #3 dukker opp.",
     "Dette varslet gjelder quote/main pairen – child-tokens er ikke automatisk godkjent eller kjøpssignaler.",
     event.sourceUrl,
   ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+
+export function formatPairLaunchAlert(alert: PairLaunchAlert, quote?: QuoteMeta): string {
+  const q = quote?.symbol || quote?.name || alert.quoteMint;
+  const token = alert.name || alert.symbol || alert.mint;
+  return [
+    `⚡ STONK — ${q} LAUNCH #${alert.rank}`,
+    `${token} / ${q}`,
+    `Offisiell rekkefølge i Stonk-feeden: #${alert.rank}`,
+    `Token mint: ${alert.mint}`,
+    `Opprettet: ${new Date(alert.launchedAt).toISOString()}`,
+    "Analyse er satt i gang. Dette er et rått discovery-varsel, ikke GEM-godkjenning.",
+  ].join("\n");
 }

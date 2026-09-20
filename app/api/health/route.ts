@@ -20,6 +20,7 @@ export async function GET() {
       launchesError: monitor.state?.launchesError,
       pairLaunchesLastSuccessAt: monitor.state?.pairLaunchesLastSuccessAt,
       pairLaunchesError: monitor.state?.pairLaunchesError,
+      activePairLaunchWatches: Object.keys(monitor.state?.pairLaunchWatches || {}).length,
       discoveryLastSuccessAt: monitor.state?.discoveryLastSuccessAt,
       discoveryError: monitor.state?.discoveryError,
       lastStartedCount: monitor.state?.lastStartedCount,

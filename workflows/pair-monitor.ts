@@ -1,9 +1,9 @@
 import { createHook, getWorkflowMetadata, getWritable, sleep, FatalError } from "workflow";
 import { start } from "workflow/api";
 import { listQuotePairs } from "@/lib/pairs";
-import { listPairLaunches, listRecentLaunches, stonkRowToLaunch } from "@/lib/stonk";
-import { activePairEvent, announcementEvents, emptyMonitorState, EVENT_WINDOW_MS, formatPairEvent, observePairs,
-  PAIR_MONITOR_TOKEN, type PairMonitorState } from "@/lib/pair-events";
+import { firstPairLaunchesFromRows, getPairLaunchFeed, listFirstPairLaunchesSince, listRecentLaunches, stonkRowToLaunch } from "@/lib/stonk";
+import { activePairEvent, announcementEvents, emptyMonitorState, EVENT_WINDOW_MS, formatPairEvent, formatPairLaunchAlert, observePairs,
+  PAIR_MONITOR_TOKEN, type PairLaunchAlert, type PairMonitorState } from "@/lib/pair-events";
 import { pollOfficialX } from "@/lib/x-feed";
 import { sendTelegram } from "@/lib/telegram";
 import type { Launch, PairEvent, QuoteMeta } from "@/lib/types";
@@ -16,8 +16,13 @@ export async function pollPairSources(previous: PairMonitorState) {
   "use step";
   const now = Date.now();
   let state: PairMonitorState = { ...previous, checkedAt: now, lastStartedCount: 0,
+    pairLaunchWatches: Object.fromEntries(Object.entries(previous.pairLaunchWatches || {})
+      .filter(([, watch]) => now - watch.eventDetectedAt < EVENT_WINDOW_MS)
+      .map(([mint, watch]) => [mint, { ...watch, notifiedMints: { ...watch.notifiedMints } }])),
     seenLaunches: Object.fromEntries(Object.entries(previous.seenLaunches).filter(([, at]) => now - at < EVENT_WINDOW_MS)) };
-  const since = Math.max(state.launchCursor ?? now - 5 * 60_000, now - EVENT_WINDOW_MS);
+  // The global feed is a live discovery lane, not an unbounded historical
+  // replay. Clamp stale cursors so a prior outage cannot permanently overload it.
+  const since = Math.max(state.launchCursor ?? now - 5 * 60_000, now - 10 * 60_000);
   const discoveryDue = !state.discoveryLastSuccessAt || now - state.discoveryLastSuccessAt >= 30 * 60_000;
   const [registry, tokens, x, discovery] = await Promise.allSettled([
     listQuotePairs(), listRecentLaunches(since), pollOfficialX(state.x, now),
@@ -27,6 +32,13 @@ export async function pollPairSources(previous: PairMonitorState) {
   if (registry.status === "fulfilled") {
     const observed = observePairs(state, registry.value, now);
     state = observed.state;
+    state.pairLaunchWatches = state.pairLaunchWatches || {};
+    for (const event of observed.added.filter(event => event.source === "stonk-registry")) {
+      state.pairLaunchWatches[event.quoteMint] = {
+        eventDetectedAt: event.detectedAt,
+        notifiedMints: {},
+      };
+    }
     events.push(...observed.added);
   } else state.registryError = errorText(registry.reason);
 
@@ -52,15 +64,34 @@ export async function pollPairSources(previous: PairMonitorState) {
       .sort((a, b) => b.detectedAt - a.detectedAt)
       .map(event => [event.quoteMint, event]),
   ).values()].slice(0, 10);
-  const pairFeeds = await Promise.allSettled(activePairEvents.map(async event => ({
-    event,
-    rows: await listPairLaunches(event.quoteMint),
-  })));
+  const pairFeeds = await Promise.allSettled(activePairEvents.map(async event => {
+    const feed = await getPairLaunchFeed(event.quoteMint);
+    const watch = state.pairLaunchWatches?.[event.quoteMint];
+    let ranked = watch
+      ? firstPairLaunchesFromRows(feed.rows, event.detectedAt - 5 * 60_000, 3)
+      : [];
+    if (watch && (feed.total ?? feed.rows.length) > feed.rows.length) {
+      ranked = await listFirstPairLaunchesSince(event.quoteMint, event.detectedAt - 5 * 60_000, 3);
+    }
+    return { event, rows: feed.rows, ranked };
+  }));
   const pairCandidates: Launch[] = [];
+  const pairLaunchAlerts: PairLaunchAlert[] = [];
   let pairFailures = 0;
   for (const result of pairFeeds) {
     if (result.status === "rejected") { pairFailures += 1; continue; }
-    const { event, rows } = result.value;
+    const { event, rows, ranked } = result.value;
+    const watch = state.pairLaunchWatches?.[event.quoteMint];
+    if (watch) {
+      ranked.forEach((row, index) => {
+        const rank = (index + 1) as 1 | 2 | 3;
+        const launchedAt = Date.parse(row.createdAt || "");
+        if (!watch.notifiedMints[row.mint] && Number.isFinite(launchedAt)) {
+          pairLaunchAlerts.push({ rank, quoteMint: event.quoteMint, mint: row.mint,
+            name: row.name, symbol: row.symbol, launchedAt, event });
+        }
+      });
+    }
     for (const row of rows) {
       const launch = stonkRowToLaunch(row);
       if (!launch || launch.quoteMint !== event.quoteMint || state.seenLaunches[launch.mint]) continue;
@@ -118,7 +149,7 @@ export async function pollPairSources(previous: PairMonitorState) {
     } else state.discoveryError = errorText(discovery.reason);
   }
   state.lastStartedCount = launches.length;
-  return { state, events, launches };
+  return { state, events, launches, pairLaunchAlerts };
 }
 
 async function enqueueLaunch(launch: Launch) {
@@ -132,6 +163,12 @@ async function enqueueLaunch(launch: Launch) {
 async function notifyPair(event: PairEvent, quote?: QuoteMeta) {
   "use step";
   try { await sendTelegram(formatPairEvent(event, quote), event.quoteMint); return true; }
+  catch { return false; }
+}
+
+async function notifyPairLaunch(alert: PairLaunchAlert, quote?: QuoteMeta) {
+  "use step";
+  try { await sendTelegram(formatPairLaunchAlert(alert, quote), alert.mint); return true; }
   catch { return false; }
 }
 
@@ -167,7 +204,7 @@ export async function pairMonitorWorkflow(seed?: PairMonitorState, predecessor?:
     for (let tick = 0; tick < 360; tick++) {
       const result = await pollPairSources(state);
       state = result.state;
-      // Queue analysis before notifications so a slow Telegram API can't delay discovery.
+      // Queue analysis immediately; Telegram delivery is independent and can retry.
       for (const launch of result.launches) {
         const queued = await enqueueLaunch(launch);
         if (queued.error) {
@@ -176,12 +213,21 @@ export async function pairMonitorWorkflow(seed?: PairMonitorState, predecessor?:
           state.launchesError = queued.error;
         }
       }
+      // Main-pair announcement is sent before #1/#2/#3 so Telegram reads in
+      // the same order as the event actually happened.
       const pending: PairEvent[] = [];
       for (const event of [...(state.pendingNotifications || []), ...result.events]) {
         if (Date.now() - event.detectedAt > EVENT_WINDOW_MS) continue;
         if (!await notifyPair(event, state.knownPairs.find(p => p.mint === event.quoteMint))) pending.push(event);
       }
       state.pendingNotifications = pending;
+      for (const alert of result.pairLaunchAlerts.sort((a, b) => a.rank - b.rank)) {
+        const watch = state.pairLaunchWatches?.[alert.quoteMint];
+        if (!watch || watch.notifiedMints[alert.mint]) continue;
+        if (await notifyPairLaunch(alert, state.knownPairs.find(p => p.mint === alert.quoteMint))) {
+          watch.notifiedMints[alert.mint] = alert.rank;
+        }
+      }
       state.notificationError = pending.length ? "Telegram delivery pending; retrying next poll" : undefined;
       await checkpoint(state);
       await sleep("60s");

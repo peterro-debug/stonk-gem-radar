@@ -200,10 +200,52 @@ export async function listStonkTokens(sort: "newest" | "volume" | "marketCap", p
   return Array.isArray(body?.data?.tokens) ? body.data.tokens : [];
 }
 
-export async function listPairLaunches(quoteMint: string, pageSize = 100): Promise<StonkTokenRow[]> {
-  const body = await getJson(`/tokens?quoteMint=${encodeURIComponent(quoteMint)}&sort=newest&page=1&pageSize=${pageSize}`);
+export type StonkPairLaunchFeed = { rows: StonkTokenRow[]; total?: number };
+
+async function pairLaunchPage(quoteMint: string, page: number, pageSize = 100): Promise<StonkPairLaunchFeed> {
+  const body = await getJson(`/tokens?quoteMint=${encodeURIComponent(quoteMint)}&sort=newest&page=${page}&pageSize=${pageSize}`);
   if (!Array.isArray(body?.data?.tokens)) throw new Error("Stonk pair launch feed unavailable");
-  return body.data.tokens;
+  return { rows: body.data.tokens, total: num(body?.data?.pagination?.total) };
+}
+
+export async function getPairLaunchFeed(quoteMint: string, pageSize = 100): Promise<StonkPairLaunchFeed> {
+  return pairLaunchPage(quoteMint, 1, pageSize);
+}
+
+export async function listPairLaunches(quoteMint: string, pageSize = 100): Promise<StonkTokenRow[]> {
+  return (await getPairLaunchFeed(quoteMint, pageSize)).rows;
+}
+
+export function firstPairLaunchesFromRows(rows: StonkTokenRow[], since: number, limit = 3): StonkTokenRow[] {
+  return [...new Map(rows.map(row => [row.mint, row])).values()]
+    .filter(row => row.mint && Number.isFinite(Date.parse(row.createdAt || ""))
+      && Date.parse(row.createdAt || "") >= since)
+    .sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || "")
+      || a.mint.localeCompare(b.mint))
+    .slice(0, limit);
+}
+
+// Historical/recovery helper. Because the public feed is sorted newest-first,
+// the last page contains the earliest launches. For fresh main pairs this also
+// guards against a burst large enough to push #1-#3 off page 1 before a poll.
+export async function listFirstPairLaunchesSince(quoteMint: string, since: number, limit = 3): Promise<StonkTokenRow[]> {
+  const first = await pairLaunchPage(quoteMint, 1, 100);
+  if ((first.total ?? first.rows.length) <= first.rows.length) {
+    return firstPairLaunchesFromRows(first.rows, since, limit);
+  }
+  const total = first.total!;
+  const lastPage = Math.max(1, Math.ceil(total / 100));
+  const rows: StonkTokenRow[] = [];
+  for (let page = lastPage; page >= Math.max(1, lastPage - 4); page--) {
+    const batch = await pairLaunchPage(quoteMint, page, 100);
+    rows.push(...batch.rows);
+    const ranked = firstPairLaunchesFromRows(rows, since, limit);
+    if (ranked.length >= limit || batch.rows.some(row => Date.parse(row.createdAt || "") < since)) return ranked;
+  }
+  // If the activation boundary is much newer than the oldest pages, page 1
+  // still gives us the freshest candidates without claiming missing ranks.
+  rows.push(...first.rows);
+  return firstPairLaunchesFromRows(rows, since, limit);
 }
 
 let catalogueCache: { expiresAt: number; promise: Promise<StonkTokenRow[]> } | undefined;
@@ -218,18 +260,23 @@ export function recentConceptCatalogue(): Promise<StonkTokenRow[]> {
 
 export async function listRecentLaunches(since: number): Promise<StonkTokenRow[]> {
   const rows: StonkTokenRow[] = [];
-  const configured = Number(process.env.STONK_LAUNCH_SCAN_MAX_PAGES || 25);
-  const maxPages = Number.isFinite(configured) ? Math.max(1, Math.min(50, Math.floor(configured))) : 25;
+  const configured = Number(process.env.STONK_LAUNCH_SCAN_MAX_PAGES || 5);
+  const maxPages = Number.isFinite(configured) ? Math.max(1, Math.min(10, Math.floor(configured))) : 5;
   for (let page = 1; page <= maxPages; page++) {
     const body = await getJson(`/tokens?sort=newest&page=${page}&pageSize=100`);
-    if (!Array.isArray(body?.data?.tokens)) throw new Error("Stonk launch feed unavailable");
+    if (!Array.isArray(body?.data?.tokens)) {
+      // Page 1 is the live source of truth. A later-page failure should not
+      // turn a usable live scan into a total outage.
+      if (rows.length) return rows;
+      throw new Error("Stonk launch feed unavailable");
+    }
     const batch: StonkTokenRow[] = body.data.tokens;
     rows.push(...batch);
     if (batch.length < 100 || batch.some(row => Date.parse(row.createdAt || "") < since)) return rows;
   }
-  // Fail loudly rather than skipping unobserved global launches. New main-pair
-  // launches are scanned independently, so a global burst cannot block them.
-  throw new Error(`Stonk launch feed exceeds ${maxPages * 100}-row scan window`);
+  // Keep the radar live instead of pinning it to an hours-old backlog. Missed
+  // older breakouts are recovered by the 30-minute BUILD/REAWAKENING discovery.
+  return rows;
 }
 
 export function stonkRowToLaunch(row: StonkTokenRow): Launch | undefined {

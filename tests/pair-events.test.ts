@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { announcementEvents, emptyMonitorState, observePairs, activePairEvent, formatPairEvent, pairLaunchFeedUrl } from "@/lib/pair-events";
+import { announcementEvents, emptyMonitorState, observePairs, activePairEvent, formatPairEvent, formatPairLaunchAlert, pairLaunchFeedUrl } from "@/lib/pair-events";
 import { nameAssociation } from "@/lib/name-fit";
 import { pollOfficialX } from "@/lib/x-feed";
 import { pollPairSources } from "@/workflows/pair-monitor";
@@ -28,6 +28,15 @@ describe("new pair events and name relationships", () => {
     expect(message).toContain(pairLaunchFeedUrl("pepe"));
     expect(message).toContain("quoteMint=pepe&sort=newest&page=1&pageSize=100");
     expect(message).not.toContain("%26sort");
+  });
+  it("formats ranked child launches clearly", () => {
+    const event = { quoteMint: "pepe", detectedAt: now, source: "stonk-registry" as const,
+      sourceUrl: "https://www.stonkfun.xyz", description: "Pepe appeared in the official pair registry" };
+    const message = formatPairLaunchAlert({ rank: 1, quoteMint: "pepe", mint: "child",
+      name: "FEELSGOOD", launchedAt: now + 1000, event }, pepe);
+    expect(message).toContain("PEPE LAUNCH #1");
+    expect(message).toContain("FEELSGOOD / PEPE");
+    expect(message).toContain("Offisiell rekkefølge i Stonk-feeden: #1");
   });
   it("does not mislabel an X confirmation as a new registry addition", () => {
     const event = { quoteMint: "pepe", detectedAt: now, source: "x-announcement" as const,
@@ -76,31 +85,53 @@ describe("source failures and X cursor", () => {
     expect((await pollPairSources(result.state)).launches).toEqual([]);
     expect(fetcher.mock.calls.filter(([url]) => String(url).includes("sort=volume"))).toHaveLength(0);
   });
-  it("keeps fresh main-pair launches visible even when the global launch feed overflows", async () => {
+  it("keeps fresh main-pair launches visible and ranks #1-#3 when the global feed is saturated", async () => {
     vi.stubEnv("X_BEARER_TOKEN", "");
     vi.stubEnv("STONK_LAUNCH_SCAN_MAX_PAGES", "2");
     const time = Date.now();
     let state = observePairs(emptyMonitorState(), [pepe], time - 120_000).state;
-    state = observePairs(state, [pepe, google], time - 60_000).state;
     state.discoveryLastSuccessAt = time;
-    const child = { mint: "google-child", pool: "child-pool", quote: google,
-      createdAt: new Date(time - 10_000).toISOString() };
+    const ranked = [
+      { mint: "child-3", pool: "pool-3", quote: google, name: "THREE", createdAt: new Date(time - 10_000).toISOString() },
+      { mint: "child-1", pool: "pool-1", quote: google, name: "ONE", createdAt: new Date(time - 30_000).toISOString() },
+      { mint: "child-2", pool: "pool-2", quote: google, name: "TWO", createdAt: new Date(time - 20_000).toISOString() },
+      { mint: "child-4", pool: "pool-4", quote: google, name: "FOUR", createdAt: new Date(time - 5_000).toISOString() },
+    ];
     const overflow = Array.from({ length: 100 }, (_, i) => ({
       mint: `global-${i}`, pool: `pool-${i}`, quote: pepe,
       createdAt: new Date(time - i * 100).toISOString(),
     }));
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
       if (url.endsWith("/pairs")) return Response.json({ data: { pairs: [pepe, google] } });
-      if (url.includes("quoteMint=google")) return Response.json({ data: { tokens: [child] } });
+      if (url.includes("quoteMint=google")) return Response.json({ data: { tokens: ranked, pagination: { total: 4 } } });
       if (url.includes("/tokens?sort=newest")) return Response.json({ data: { tokens: overflow } });
       return Response.json({ data: { tokens: [] } });
     }));
     const result = await pollPairSources(state);
-    expect(result.state.launchesError).toContain("exceeds 200-row scan window");
+    expect(result.state.launchesError).toBeUndefined();
     expect(result.state.pairLaunchesLastSuccessAt).toBeGreaterThan(0);
+    expect(result.pairLaunchAlerts.map(a => [a.rank, a.mint])).toEqual([
+      [1, "child-1"], [2, "child-2"], [3, "child-3"],
+    ]);
     expect(result.launches).toEqual(expect.arrayContaining([
-      expect.objectContaining({ mint: "google-child", pairEvent: expect.objectContaining({ quoteMint: "google" }) }),
+      expect.objectContaining({ mint: "child-1", pairEvent: expect.objectContaining({ quoteMint: "google" }) }),
     ]));
+  });
+  it("does not retroactively create ranked Telegram alerts for pair events from before this code was watching them", async () => {
+    vi.stubEnv("X_BEARER_TOKEN", "");
+    const time = Date.now();
+    let state = observePairs(emptyMonitorState(), [pepe], time - 120_000).state;
+    state = observePairs(state, [pepe, google], time - 60_000).state;
+    state.discoveryLastSuccessAt = time;
+    const child = { mint: "old-child", pool: "old-pool", quote: google,
+      createdAt: new Date(time - 50_000).toISOString() };
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/pairs")) return Response.json({ data: { pairs: [pepe, google] } });
+      if (url.includes("quoteMint=google")) return Response.json({ data: { tokens: [child], pagination: { total: 1 } } });
+      return Response.json({ data: { tokens: [] } });
+    }));
+    const result = await pollPairSources(state);
+    expect(result.pairLaunchAlerts).toEqual([]);
   });
   it("advances the global launch cursor while draining a backlog", async () => {
     vi.stubEnv("X_BEARER_TOKEN", "");
