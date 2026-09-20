@@ -1,0 +1,39 @@
+name: Verify completed FTT swap
+on:
+  push:
+    branches: [diagnostics/ftx-pair-verification-20260920]
+    paths: [.github/workflows/ftt-successful-swap-check.yml]
+permissions: {}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read-only transaction and infrastructure comparison
+        run: |
+          node <<'NODE'
+          const M='EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv',S='8rq59Z7rjezyuJpEYBCCWG7iEdEuL6EevpUfMoqbcBQ5',P='464iJip1fGczMYgCjVGZ7D5dYEbUApgdzkzN6bt5jwWt';
+          const emit=(l,v)=>console.log(l+'='+JSON.stringify(v));
+          async function read(url,init){try{const r=await fetch(url,{...init,signal:AbortSignal.timeout(15000)});return{url,http:r.status,observedAt:new Date().toISOString(),body:await r.json()}}catch(e){return{url,error:String(e)}}}
+          const rpc=(method,params)=>read('https://api.mainnet-beta.solana.com',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+          function b58(b){const c='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';let n=BigInt('0x'+b.toString('hex')),s='';while(n){s=c[Number(n%58n)]+s;n/=58n}for(const v of b){if(v!==0)break;s='1'+s}return s;}
+          (async()=>{
+            const sigs=await rpc('getSignaturesForAddress',[P,{limit:30,commitment:'confirmed'}]);
+            const rows=sigs.body?.result;
+            emit('SIGNATURE_SAMPLE',{http:sigs.http,observedAt:sigs.observedAt,error:sigs.body?.error,count:Array.isArray(rows)?rows.length:null,successful:Array.isArray(rows)?rows.filter(s=>s.err===null).length:null});
+            for(const sig of (Array.isArray(rows)?rows.filter(s=>s.err===null).slice(0,3):[])){
+              const r=await rpc('getTransaction',[sig.signature,{encoding:'jsonParsed',maxSupportedTransactionVersion:0,commitment:'confirmed'}]);const t=r.body?.result;
+              const logs=t?.meta?.logMessages?.filter(s=>/Instruction:|Swap|swap/i.test(s));
+              emit('SUCCESSFUL_STX_TX',{signature:sig.signature,http:r.http,observedAt:r.observedAt,error:r.body?.error,blockTime:t?.blockTime,slot:t?.slot,transactionError:t?.meta?.err,logs,preTokenBalances:t?.meta?.preTokenBalances?.filter(x=>x.mint===M||x.mint===S),postTokenBalances:t?.meta?.postTokenBalances?.filter(x=>x.mint===M||x.mint===S)});
+              if(t?.meta?.err===null&&logs?.some(s=>/swap/i.test(s)))break;
+            }
+            const ms=[S,'8DCYx1LvF5Pcb8YsR83VDkSBbHZfT47Z9n74pA1VZZwZ','4Rqn7bPaq4fq4HhSJMWRScAWXF4jMukZb31trpT2fZyT'];
+            const m=await rpc('getMultipleAccounts',[ms,{encoding:'jsonParsed',commitment:'confirmed'}]);
+            emit('CHILD_MINT_AUTHORITIES',{http:m.http,observedAt:m.observedAt,error:m.body?.error,slot:m.body?.result?.context?.slot,accounts:m.body?.result?.value?.map((a,i)=>({mint:ms[i],owner:a?.owner,data:a?.data}))});
+            const known=await read('https://api-v3.raydium.io/pools/info/mint?mint1=8fogMoMGVZUwtoCB2ZrMkBhq76BzBNw4o2syZCYEvCZG&poolType=all&poolSortField=liquidity&sortType=desc&pageSize=3&page=1');
+            const pools=known.body?.data?.data?.filter(p=>p.programId==='CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C')||[];
+            if(pools.length){const a=await rpc('getMultipleAccounts',[pools.map(p=>p.id),{encoding:'base64',commitment:'confirmed'}]);emit('KNOWN_STONK_WAT_POOL_COMPARISON',{http:a.http,observedAt:a.observedAt,pools:a.body?.result?.value?.map((v,i)=>{if(!v||!Array.isArray(v.data))return null;const b=Buffer.from(v.data[0],'base64');return{pool:pools[i].id,owner:v.owner,poolCreator:b58(b.subarray(40,72)),mint0:b58(b.subarray(168,200)),mint1:b58(b.subarray(200,232))}})});}
+            else emit('KNOWN_STONK_WAT_POOL_COMPARISON',{http:known.http,observedAt:known.observedAt,error:known.body?.msg,matchingCpmmPools:0});
+            emit('SCOPE','No transactions were submitted. Recent signature sample is not a full-volume or wallet-risk audit. A common platform pool creator does not establish common ownership of token holders.');
+          })().catch(e=>{console.error(String(e));process.exitCode=1;});
+          NODE
