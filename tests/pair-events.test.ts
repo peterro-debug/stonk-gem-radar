@@ -146,7 +146,44 @@ describe("source failures and X cursor", () => {
     expect(second.pairLaunchAlerts.some(a => a.rank === 1 && a.mint !== "seen-first")).toBe(false);
   });
 
-  it("replays the real BlackBerry launch burst through the full registry-to-Telegram ranking path", async () => {
+  it("replays the real PEPE first-three feed order through registry-to-Telegram ranking", async () => {
+    vi.stubEnv("X_BEARER_TOKEN", "");
+    const PEPE = "PEPEqnuuCDbBC89p1u9vpnP1KQ2oj1xTcQBsjt9X55m";
+    const pepeQuote = { mint: PEPE, symbol: "PEPE", name: "Pepe" };
+    const eventTime = Date.parse("2026-09-18T21:21:20Z");
+    const dateSpy = vi.spyOn(Date, "now").mockReturnValue(eventTime);
+    try {
+      let state = observePairs(emptyMonitorState(), [google], eventTime - 60_000).state;
+      state.discoveryLastSuccessAt = eventTime;
+      // Captured from the complete live STONK quote history. The API is
+      // newest-first, so these three are supplied in reverse of the desired
+      // oldest-first Telegram order.
+      const rows = [
+        { mint: "8pCYnTGuzeLEs5PQkB9pofFrKetSgxySYffCXDwQy8hf", pool: "pepe-p3",
+          name: "Apu", symbol: "Apu", quote: pepeQuote, createdAt: "2026-09-18T21:21:08.245Z" },
+        { mint: "XX5kkTT8HGTEdQTCjHUSmihmZKUki3SuFzKT37RkCTL", pool: "pepe-p2",
+          name: "PEPE BY MATT FURIRE", symbol: "PEPE", quote: pepeQuote, createdAt: "2026-09-18T21:21:08.245Z" },
+        { mint: "7ZG8CUGtNxr4WuUbXfm14MUHLPLaz2aYsxHWDo9uSTNK", pool: "pepe-p1",
+          name: "Pepes Dog", symbol: "ZEUS", quote: pepeQuote, createdAt: "2026-09-18T21:21:08.245Z" },
+      ];
+      vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith("/pairs")) return Response.json({ data: { pairs: [google, pepeQuote] } });
+        if (url.includes(`quoteMint=${PEPE}`)) return Response.json({ data: { tokens: rows, pagination: { total: 3 } } });
+        return Response.json({ data: { tokens: [] } });
+      }));
+      const result = await pollPairSources(state);
+      expect(result.events).toEqual([expect.objectContaining({ quoteMint: PEPE, source: "stonk-registry" })]);
+      expect(result.pairLaunchAlerts.map(a => [a.rank, a.name])).toEqual([
+        [1, "Pepes Dog"],
+        [2, "PEPE BY MATT FURIRE"],
+        [3, "Apu"],
+      ]);
+    } finally {
+      dateSpy.mockRestore();
+    }
+  });
+
+  it("replays the real BlackBerry first-three feed order through registry-to-Telegram ranking", async () => {
     vi.stubEnv("X_BEARER_TOKEN", "");
     const BLACKBERRY = "BBosJLw8ZzoATiEyywiifx7AgmrD2Cm3XjFWbhbRhChy";
     const blackberry = { mint: BLACKBERRY, symbol: "BB", name: "BlackBerry" };
@@ -155,15 +192,15 @@ describe("source failures and X cursor", () => {
     try {
       let state = observePairs(emptyMonitorState(), [pepe], eventTime - 60_000).state;
       state.discoveryLastSuccessAt = eventTime;
-      // Real rows captured from Stonk's quote feed. sort=newest returns this
-      // timestamp-tied burst newest-first; ranking reverses the stable feed order.
+      // Complete historical API order at the earliest timestamp: #1 catonfone,
+      // #2 Black Berry, #3 LEFT ON READ. Input is newest-first.
       const blackberryRows = [
-        { mint: "2BfNhvG7AQuibA7pZsJywSYPDwAhVZdUX7pzAfjy4C8s", pool: "bb-p3",
-          name: "BlackBerry", symbol: "BB", quote: blackberry, createdAt: "2026-09-19T16:06:19.729Z" },
-        { mint: "1ABvDeUV4qjo1MjoAts4ieXTZQhALW2Ppw324bHWkos", pool: "bb-p2",
-          name: "Blackberry-Chan", symbol: "BB-Chan", quote: blackberry, createdAt: "2026-09-19T16:06:19.729Z" },
-        { mint: "12GLirh8ij7YXgQYgT74cL2EwzPU1uSdp3QfDAeAsLnC", pool: "bb-p1",
-          name: "RIMCOIN", symbol: "RIM", quote: blackberry, createdAt: "2026-09-19T16:06:19.729Z" },
+        { mint: "4oiwwTYCAkscu6bduumQArRYKiEGpTGmidBeSNtuZu7b", pool: "bb-p3",
+          name: "LEFT ON READ", symbol: "LEFTONREAD", quote: blackberry, createdAt: "2026-09-19T16:06:19.729Z" },
+        { mint: "ETBqAeJvHmafXoBQcyEta2VEbTiWCgBS8By2Yig2k1c5", pool: "bb-p2",
+          name: "Black Berry", symbol: "BLACKBERRY", quote: blackberry, createdAt: "2026-09-19T16:06:19.729Z" },
+        { mint: "8hm78B3Gd1QEsJ8jaEY5X8cx6atTex4ossBaXZeD8CGD", pool: "bb-p1",
+          name: "catonfone", symbol: "fone", quote: blackberry, createdAt: "2026-09-19T16:06:19.729Z" },
       ];
       vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
         if (url.endsWith("/pairs")) return Response.json({ data: { pairs: [pepe, blackberry] } });
@@ -175,9 +212,9 @@ describe("source failures and X cursor", () => {
       const result = await pollPairSources(state);
       expect(result.events).toEqual([expect.objectContaining({ quoteMint: BLACKBERRY, source: "stonk-registry" })]);
       expect(result.pairLaunchAlerts.map(a => [a.rank, a.mint, a.name])).toEqual([
-        [1, "12GLirh8ij7YXgQYgT74cL2EwzPU1uSdp3QfDAeAsLnC", "RIMCOIN"],
-        [2, "1ABvDeUV4qjo1MjoAts4ieXTZQhALW2Ppw324bHWkos", "Blackberry-Chan"],
-        [3, "2BfNhvG7AQuibA7pZsJywSYPDwAhVZdUX7pzAfjy4C8s", "BlackBerry"],
+        [1, "8hm78B3Gd1QEsJ8jaEY5X8cx6atTex4ossBaXZeD8CGD", "catonfone"],
+        [2, "ETBqAeJvHmafXoBQcyEta2VEbTiWCgBS8By2Yig2k1c5", "Black Berry"],
+        [3, "4oiwwTYCAkscu6bduumQArRYKiEGpTGmidBeSNtuZu7b", "LEFT ON READ"],
       ]);
       expect(result.state.pairLaunchWatches?.[BLACKBERRY]?.ranked.map(x => x.mint)).toEqual(
         result.pairLaunchAlerts.map(a => a.mint),
