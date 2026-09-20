@@ -18,7 +18,8 @@ export async function pollPairSources(previous: PairMonitorState) {
   let state: PairMonitorState = { ...previous, checkedAt: now, lastStartedCount: 0,
     pairLaunchWatches: Object.fromEntries(Object.entries(previous.pairLaunchWatches || {})
       .filter(([, watch]) => now - watch.eventDetectedAt < EVENT_WINDOW_MS)
-      .map(([mint, watch]) => [mint, { ...watch, notifiedMints: { ...watch.notifiedMints } }])),
+      .map(([mint, watch]) => [mint, { ...watch, ranked: [...(watch.ranked || [])],
+        notifiedMints: { ...watch.notifiedMints } }])),
     seenLaunches: Object.fromEntries(Object.entries(previous.seenLaunches).filter(([, at]) => now - at < EVENT_WINDOW_MS)) };
   // The global feed is a live discovery lane, not an unbounded historical
   // replay. Clamp stale cursors so a prior outage cannot permanently overload it.
@@ -36,6 +37,7 @@ export async function pollPairSources(previous: PairMonitorState) {
     for (const event of observed.added.filter(event => event.source === "stonk-registry")) {
       state.pairLaunchWatches[event.quoteMint] = {
         eventDetectedAt: event.detectedAt,
+        ranked: [],
         notifiedMints: {},
       };
     }
@@ -83,12 +85,19 @@ export async function pollPairSources(previous: PairMonitorState) {
     const { event, rows, ranked } = result.value;
     const watch = state.pairLaunchWatches?.[event.quoteMint];
     if (watch) {
-      ranked.forEach((row, index) => {
-        const rank = (index + 1) as 1 | 2 | 3;
+      // Freeze #1/#2/#3 the first time each slot is observed. STONK can index
+      // an older row late; that must never re-label a second token as the same rank.
+      for (const row of ranked) {
+        if (watch.ranked.length >= 3 || watch.ranked.some(saved => saved.mint === row.mint)) continue;
         const launchedAt = Date.parse(row.createdAt || "");
-        if (!watch.notifiedMints[row.mint] && Number.isFinite(launchedAt)) {
-          pairLaunchAlerts.push({ rank, quoteMint: event.quoteMint, mint: row.mint,
-            name: row.name, symbol: row.symbol, launchedAt, event });
+        if (!Number.isFinite(launchedAt)) continue;
+        watch.ranked.push({ mint: row.mint, name: row.name, symbol: row.symbol, launchedAt });
+      }
+      watch.ranked.forEach((saved, index) => {
+        const rank = (index + 1) as 1 | 2 | 3;
+        if (!watch.notifiedMints[saved.mint]) {
+          pairLaunchAlerts.push({ rank, quoteMint: event.quoteMint, mint: saved.mint,
+            name: saved.name, symbol: saved.symbol, launchedAt: saved.launchedAt, event });
         }
       });
     }

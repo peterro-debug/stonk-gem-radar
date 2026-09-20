@@ -7,6 +7,9 @@ export const PAIR_MONITOR_TOKEN = "stonk-pair-monitor:v1";
 
 export type PairLaunchWatch = {
   eventDetectedAt: number;
+  // Once a slot is assigned it never shifts. This prevents a delayed API row
+  // from causing two different tokens to be announced as "#1".
+  ranked: Array<{ mint: string; name?: string; symbol?: string; launchedAt: number }>;
   notifiedMints: Record<string, number>;
 };
 

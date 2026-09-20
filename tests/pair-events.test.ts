@@ -117,6 +117,35 @@ describe("source failures and X cursor", () => {
       expect.objectContaining({ mint: "child-1", pairEvent: expect.objectContaining({ quoteMint: "google" }) }),
     ]));
   });
+  it("freezes assigned launch ranks if an older row is indexed later", async () => {
+    vi.stubEnv("X_BEARER_TOKEN", "");
+    const time = Date.now();
+    let state = observePairs(emptyMonitorState(), [pepe], time - 120_000).state;
+    state.discoveryLastSuccessAt = time;
+    let pairRows = [
+      { mint: "seen-first", pool: "p1", quote: google, name: "SEEN FIRST", createdAt: new Date(time - 20_000).toISOString() },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/pairs")) return Response.json({ data: { pairs: [pepe, google] } });
+      if (url.includes("quoteMint=google")) return Response.json({ data: { tokens: pairRows, pagination: { total: pairRows.length } } });
+      return Response.json({ data: { tokens: [] } });
+    }));
+    const first = await pollPairSources(state);
+    expect(first.pairLaunchAlerts.map(a => [a.rank, a.mint])).toEqual([[1, "seen-first"]]);
+    state = first.state;
+    // Simulate successful Telegram delivery of #1 before the next API poll.
+    state.pairLaunchWatches!.google.notifiedMints["seen-first"] = 1;
+    pairRows = [
+      { mint: "seen-first", pool: "p1", quote: google, name: "SEEN FIRST", createdAt: new Date(time - 20_000).toISOString() },
+      { mint: "late-older", pool: "p0", quote: google, name: "LATE OLDER", createdAt: new Date(time - 30_000).toISOString() },
+      { mint: "next", pool: "p2", quote: google, name: "NEXT", createdAt: new Date(time - 10_000).toISOString() },
+    ];
+    const second = await pollPairSources(state);
+    expect(second.state.pairLaunchWatches!.google.ranked.map(x => x.mint)).toEqual(["seen-first", "late-older", "next"]);
+    expect(second.pairLaunchAlerts.map(a => [a.rank, a.mint])).toEqual([[2, "late-older"], [3, "next"]]);
+    expect(second.pairLaunchAlerts.some(a => a.rank === 1 && a.mint !== "seen-first")).toBe(false);
+  });
+
   it("does not retroactively create ranked Telegram alerts for pair events from before this code was watching them", async () => {
     vi.stubEnv("X_BEARER_TOKEN", "");
     const time = Date.now();
