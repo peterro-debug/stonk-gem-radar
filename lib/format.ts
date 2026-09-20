@@ -1,5 +1,5 @@
 import type { Snapshot } from "./types";
-import { positiveAlertBlockers, walletThresholdRisks } from "./alert-policy";
+import { novelConceptQualified, observationBlockers, positiveAlertBlockers, walletThresholdRisks } from "./alert-policy";
 import { WALLET_LIMITS } from "./constants";
 
 const money = (n?: number) => n == null || !Number.isFinite(n) ? "ukjent"
@@ -23,17 +23,18 @@ function riskSummary(s: Snapshot): string[] {
     if (measured != null && measured > WALLET_LIMITS[field]) reasons.push(`${label} ${measured.toFixed(1)}%`);
     else if (lowerBound != null && lowerBound > WALLET_LIMITS[field]) reasons.push(`${label} minst ${lowerBound.toFixed(1)}%`);
   }
-  if ((w.graphInsiderWallets ?? 0) >= WALLET_LIMITS.graphInsiderWallets) reasons.push(`${w.graphInsiderWallets} koblede wallets`);
   if (s.holders.sampleComplete && (s.holders.top10Pct ?? 0) > 55) reasons.push(`topp 10 eier ${s.holders.top10Pct!.toFixed(1)}%`);
   if (s.holders.sampleComplete && (s.holders.creatorPct ?? 0) > 15) reasons.push(`utsteder eier ${s.holders.creatorPct!.toFixed(1)}%`);
   if (s.risks.some(r => r.includes("holder base fell"))) reasons.push("antall eiere falt over 30%");
   if (s.risks.some(r => r.includes("near-complete round trip"))) reasons.push("nesten hele oppgangen er reversert");
   if (w.verification === "RISKY" && !reasons.length) reasons.push("risikofunn fra walletkontrollen");
-  if (s.narrative.score < 3) reasons.push(`parmatch ${s.narrative.score}/5, krever minst 3/5`);
-  else if (!s.narrative.pairFit) reasons.push("navnekoblingen til paret mangler");
+  if (s.novelty?.duplicate) reasons.push("ligner en tidligere lansering");
+  if (s.narrative.score < 3 || !s.narrative.pairFit) reasons.push(s.status === "OBSERVATION"
+    ? "navnekobling til paret ikke bekreftet" : `parmatch ${s.narrative.score}/5, krever minst 3/5 og begrunnet kobling`);
   if (w.verification === "UNKNOWN") reasons.push(w.gmgn?.expectedWallets && !w.gmgn.coverageComplete
     ? `walletdekning ${w.gmgn.sampledWallets}/${w.gmgn.expectedWallets}` : "walletkontroller ufullstendige");
   if (!s.holders.sampleComplete || !s.holders.poolExclusionKnown || s.holders.creatorPct == null) reasons.push("eierfordeling ikke ferdig kontrollert");
+  if (!s.traders.sampledSwaps || !s.traders.uniqueBuyers) reasons.push("unike kjøpere ikke bekreftet på kjeden");
   if ((s.pair.liquidityUsd ?? 0) < 10_000) reasons.push("likviditet under $10k eller ukjent");
   if (s.risks.some(r => r.includes("thin liquidity"))) reasons.push("tynn likviditet mot markedsverdi");
   if (s.risks.some(r => r.includes("sell-heavy"))) reasons.push("salg dominerer handelen");
@@ -45,11 +46,12 @@ function riskSummary(s: Snapshot): string[] {
 // decision summary; incomplete reports must never look like approved signals.
 export function formatAlert(s: Snapshot, options: { demo?: boolean; candidate?: boolean } = {}): string {
   const blockers = positiveAlertBlockers(s);
+  const observation = s.status === "OBSERVATION" && s.score >= 70 && observationBlockers(s).length === 0;
   const risky = s.status === "INVALIDATED" || s.status === "SKIP" || s.wallet.verification === "RISKY" || walletThresholdRisks(s.wallet).length > 0;
   const label = s.status === "INVALIDATED" ? "RISIKOVARSEL"
-    : risky ? "AVVIST" : blockers.length ? "AVVENT" : options.candidate ? "TIDLIG KANDIDAT"
+    : risky ? "AVVIST" : observation ? "OBSERVASJON" : blockers.length ? "AVVENT" : options.candidate ? "TIDLIG KANDIDAT"
     : s.status === "NO SIGNAL" ? "AVVENT" : s.status;
-  const icon = risky ? "⛔" : label === "AVVENT" ? "🟡" : "🟢";
+  const icon = risky ? "⛔" : label === "AVVENT" || observation ? "🟡" : "🟢";
   const token = clean(s.token.name || s.token.symbol || "Ukjent token", 50);
   const quote = clean(s.quote.symbol || s.quote.name || "ukjent par", 15);
   const volume = s.mode === "FLASH" ? s.pair.volume5m : s.mode === "BUILD" ? s.pair.volume1h : s.pair.volume24h;
@@ -60,8 +62,8 @@ export function formatAlert(s: Snapshot, options: { demo?: boolean; candidate?: 
     "",
     `MC ${money(s.pair.marketCap ?? s.pair.fdv)} · Likviditet ${money(s.pair.liquidityUsd)}`,
     `Volum ${window} ${money(volume)} · Eiere ${holderCount}`,
-    `Parmatch ${s.narrative.score}/5 · Alder ${age(s.ageMinutes)}`,
-    risky ? "⛔ Risikokrav brutt" : blockers.length ? "⏳ Kontroller ufullstendige" : "✓ Obligatoriske kontroller bestått ved siste sjekk",
+    `${observation && novelConceptQualified(s) ? `Originalitet ${s.novelty!.score}/5 i Stonk-utvalget` : `Parmatch ${s.narrative.score}/5`} · Alder ${age(s.ageMinutes)}`,
+    risky ? "⛔ Risikokrav brutt" : observation ? "⚠️ Ufullstendig verifisert – vurder manuelt" : blockers.length ? "⏳ Kontroller ufullstendige" : "✓ Obligatoriske kontroller bestått ved siste sjekk",
   ];
   const risks = riskSummary(s);
   if (risks.length) lines.push(`Årsak: ${risks.slice(0, 2).join("; ")}${risks.length > 2 ? ` (+${risks.length - 2} øvrige forhold)` : ""}.`);

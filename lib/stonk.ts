@@ -65,6 +65,8 @@ export type StonkContext = {
   pair: PairMetrics;
   rewards: RewardMetrics;
   stonk: StonkMetrics;
+  creator?: string;
+  catalogue: { rows: StonkTokenRow[]; pairCoverageComplete: boolean; pairComparisonReady: boolean };
 };
 
 function recentPairMints(): Set<string> {
@@ -76,14 +78,29 @@ function recentPairMints(): Set<string> {
   );
 }
 
-async function getPairLaunchContext(quoteMint: string, mint: string): Promise<Pick<QuoteMeta, "launchCount" | "launchRank" | "isFirstMover" | "isNewPair">> {
+async function getPairLaunchContext(quoteMint: string, mint: string) {
   const manualEvent = recentPairMints().has(quoteMint);
   const body = await getJson(`/tokens?quoteMint=${encodeURIComponent(quoteMint)}&sort=newest&page=1&pageSize=100`);
-  const rows: StonkTokenRow[] = body?.data?.tokens || [];
+  const rows: StonkTokenRow[] = Array.isArray(body?.data?.tokens) ? body.data.tokens : [];
   const launchCount = num(body?.data?.pagination?.total);
+  const validRows = (batch: StonkTokenRow[]) => batch.every(row => row.quote?.mint === quoteMint
+    && row.mint && row.name && Number.isFinite(Date.parse(row.createdAt || "")));
+  const newestComplete = launchCount != null && launchCount > 0 && new Set(rows.map(r => r.mint)).size === Math.min(100, launchCount) && validRows(rows);
+  const pairCoverageComplete = newestComplete && launchCount! <= 100;
+  // Established pairs contain hundreds/thousands of launches. Compare two
+  // complete, declared windows instead of silently requiring all-time coverage.
+  let pairComparisonReady = pairCoverageComplete;
+  if (newestComplete && !pairCoverageComplete) {
+    const leaders = await getJson(`/tokens?quoteMint=${encodeURIComponent(quoteMint)}&sort=marketCap&page=1&pageSize=100`);
+    const batch: StonkTokenRow[] = Array.isArray(leaders?.data?.tokens) ? leaders.data.tokens : [];
+    const leaderTotal = num(leaders?.data?.pagination?.total);
+    pairComparisonReady = leaderTotal != null && leaderTotal > 0 && new Set(batch.map(r => r.mint)).size === Math.min(100, leaderTotal) && validRows(batch);
+    rows.push(...batch);
+  }
+  const uniqueRows = [...new Map(rows.map(row => [row.mint, row])).values()];
 
   let launchRank: number | undefined;
-  if (launchCount != null && launchCount <= 100) {
+  if (pairCoverageComplete) {
     const unique = [...new Map(rows.map((row) => [row.mint, row])).values()]
       .filter((row) => row.createdAt)
       .sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""));
@@ -93,6 +110,9 @@ async function getPairLaunchContext(quoteMint: string, mint: string): Promise<Pi
 
   const isFirstMover = launchRank != null && launchRank <= 3;
   return {
+    rows: uniqueRows,
+    pairCoverageComplete,
+    pairComparisonReady,
     launchCount,
     launchRank,
     isFirstMover,
@@ -130,11 +150,16 @@ export async function getStonkContext(mint: string, quoteMint: string): Promise<
     getPairLaunchContext(quoteMint, mint),
   ]);
 
-  const row: StonkTokenRow = detailBody?.data?.token || {} as StonkTokenRow;
-  const launch = detailBody?.data?.launch;
+  const row: StonkTokenRow = detailBody?.data?.token?.mint === mint ? detailBody.data.token : {} as StonkTokenRow;
+  const launch = row.mint === mint && (!detailBody?.data?.launch?.mint || detailBody.data.launch.mint === mint)
+    ? detailBody?.data?.launch : undefined;
   const rewards = await getRewards(mint, row.mode, num(row.transferFee?.bps), row.quote);
+  const { rows, pairCoverageComplete, pairComparisonReady, ...quoteContext } = pairContext;
+  const creator = launch?.creator || row.creator;
 
   return {
+    creator: typeof creator === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(creator) ? creator : undefined,
+    catalogue: { rows, pairCoverageComplete, pairComparisonReady },
     token: {
       name: row.name || launch?.name,
       symbol: row.symbol || launch?.symbol,
@@ -146,7 +171,7 @@ export async function getStonkContext(mint: string, quoteMint: string): Promise<
       symbol: row.quote?.symbol || launch?.quote?.symbol,
       image: row.quote?.logoUrl,
       category: row.quote?.category,
-      ...pairContext,
+      ...quoteContext,
     },
     pair: {
       valuationSource: "stonk",
@@ -173,6 +198,16 @@ export async function getStonkContext(mint: string, quoteMint: string): Promise<
 export async function listStonkTokens(sort: "newest" | "volume" | "marketCap", page: number, pageSize = 100): Promise<StonkTokenRow[]> {
   const body = await getJson(`/tokens?sort=${sort}&page=${page}&pageSize=${pageSize}`);
   return Array.isArray(body?.data?.tokens) ? body.data.tokens : [];
+}
+
+let catalogueCache: { expiresAt: number; promise: Promise<StonkTokenRow[]> } | undefined;
+export function recentConceptCatalogue(): Promise<StonkTokenRow[]> {
+  if (!catalogueCache || catalogueCache.expiresAt < Date.now()) {
+    catalogueCache = { expiresAt: Date.now() + 120_000,
+      promise: Promise.all([listStonkTokens("newest", 1), listStonkTokens("volume", 1)])
+        .then(pages => pages.flat()).catch(() => []) };
+  }
+  return catalogueCache.promise;
 }
 
 export async function listRecentLaunches(since: number): Promise<StonkTokenRow[]> {

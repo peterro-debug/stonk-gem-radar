@@ -33,5 +33,6 @@ export async function pairMonitorStatus() {
   const state = args?.[0] as PairMonitorState | undefined;
   if (!state || state.version !== 1 || !Array.isArray(state.events)) throw new Error("Invalid pair monitor checkpoint");
   return { status: state.checkedAt && Date.now() - state.checkedAt < 5 * 60_000 ? "active" as const : "stale" as const,
+    deploymentOutdated: run.deploymentId !== await world.getDeploymentId(),
     runId: hook.runId, state };
 }

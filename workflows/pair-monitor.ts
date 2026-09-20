@@ -8,6 +8,7 @@ import { pollOfficialX } from "@/lib/x-feed";
 import { sendTelegram } from "@/lib/telegram";
 import type { Launch, PairEvent, QuoteMeta } from "@/lib/types";
 import { launchWorkflow } from "./launch-workflow";
+import { discoverCandidates } from "@/lib/discovery";
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : "source unavailable";
 
@@ -17,8 +18,10 @@ export async function pollPairSources(previous: PairMonitorState) {
   let state: PairMonitorState = { ...previous, checkedAt: now, lastStartedCount: 0,
     seenLaunches: Object.fromEntries(Object.entries(previous.seenLaunches).filter(([, at]) => now - at < EVENT_WINDOW_MS)) };
   const since = Math.max(state.launchCursor ?? now - 5 * 60_000, now - EVENT_WINDOW_MS);
-  const [registry, tokens, x] = await Promise.allSettled([
+  const discoveryDue = !state.discoveryLastSuccessAt || now - state.discoveryLastSuccessAt >= 30 * 60_000;
+  const [registry, tokens, x, discovery] = await Promise.allSettled([
     listQuotePairs(), listRecentLaunches(since), pollOfficialX(state.x, now),
+    discoveryDue ? discoverCandidates() : Promise.resolve([]),
   ]);
   const events: PairEvent[] = [];
   if (registry.status === "fulfilled") {
@@ -56,6 +59,17 @@ export async function pollPairSources(previous: PairMonitorState) {
     // Preserve overlap for delayed indexing and retain the cursor while backlogged.
     state.launchCursor = candidates.length > 25 ? since : now - 5 * 60_000;
   } else state.launchesError = errorText(tokens.reason);
+  if (discoveryDue) {
+    if (discovery.status === "fulfilled") {
+      state.discoveryLastSuccessAt = now;
+      state.discoveryError = undefined;
+      for (const candidate of discovery.value.filter(c => !state.seenLaunches[c.launch.mint]).slice(0, 5)) {
+        launches.push(candidate.launch);
+        state.seenLaunches[candidate.launch.mint] = now;
+      }
+    } else state.discoveryError = errorText(discovery.reason);
+  }
+  state.lastStartedCount = launches.length;
   return { state, events, launches };
 }
 

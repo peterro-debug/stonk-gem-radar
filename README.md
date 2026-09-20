@@ -10,7 +10,7 @@ The same mint can move through three scan modes:
 - **BUILD (6h–3d):** survival after the first pump, retention, holder breadth and sustained flow.
 - **REAWAKENING (3–21d):** renewed volume, holders/buyers, buy-side flow and price reclaim. This is the JUPCAT fix: token age no longer disqualifies a new movement.
 
-Helius starts a monitor for each verified StonkFun launch. A durable pair monitor also polls the official pair registry and recent launches about every 60 seconds (plus processing/indexing time). The daily `/api/discover` cron backfills volume-leading tokens and acts as a watchdog. A deterministic workflow hook permits only one active 21-day monitor per mint.
+Helius starts a monitor for each verified StonkFun launch. A durable pair monitor also polls the official pair registry and recent launches about every 60 seconds (plus processing/indexing time). Every 30 minutes the pair monitor also backfills up to five not-recently-enqueued activity candidates. The daily `/api/discover` cron provides a larger backfill and acts as a watchdog. A deterministic workflow hook permits only one active 21-day monitor per mint.
 
 Each durable monitor uses absolute-age checkpoints around T+20s, 3m, 7m, 12m, 20m, 1h, 3h, 6h, 12h, 1d, 2d, 3d, 4d, 5d, 7d, 10d, 14d, 18d and 21d. Weak launches stop early; qualified candidates continue. Every check is persisted in the Vercel Workflow event log.
 
@@ -32,7 +32,7 @@ The first successful registry read establishes a baseline: existing pairs are no
 
 Quote aliases and explicit associations cover Google/Alphabet → Google It/Feeling Lucky, PEPE → FEELSGOOD, and other asset motifs. Phrase boundaries prevent incidental substring matches. This is explainable rule-based matching, not a universal AI semantic model; novel jokes and image-only posts can be missed. A readable name alone is insufficient.
 
-Within 30 minutes of launch, a matching name on a newly observed pair or among its first three launches can produce a separate **TIDLIG NAVNEKANDIDAT** alert below $100k MC. It must pass the same mandatory checks as all other positive token alerts. Unknown market cap or incomplete security evidence suppresses it. Ordinary market/risk checkpoints continue.
+Within 30 minutes of launch, a matching name on a newly observed pair or among its first three launches can produce a separate **TIDLIG NAVNEKANDIDAT** alert below $100k MC. It must pass the same mandatory checks as verified token alerts. Unknown market cap or incomplete security evidence suppresses it. Ordinary market/risk checkpoints continue.
 
 Optional X ingestion uses the official API with `X_BEARER_TOKEN` and the verified numeric `X_STONK_USER_ID`. It polls original posts every five minutes, establishes an initial cursor without sending historical posts, validates authors, and matches announcement wording to registered pairs. Unmatched posts are retained for 48 hours in case the pair registry updates later. Missing access, rate limits and errors are reported explicitly; configured credentials alone do not mean the feed is active. API access/usage is governed by the X account; this app does not purchase it.
 
@@ -44,7 +44,17 @@ DEX Screener valuations describe its base token. For reversed pairs (for example
 
 Incomplete holder samples and unknown pool exclusions produce `NO SIGNAL` while observation continues. In the first seven minutes a sample with fewer than 60 holders also waits for distribution to develop. After that, complete concentration data still hits the existing hard thresholds. Verified insider/bundle risks remain fatal at every age. A failed holder refresh cannot fabricate a holder-base collapse.
 
-Existing launch workflows remain pinned to their original deployment. After deploying a policy change, authenticated `POST /api/admin/monitor` or the setup action queues a durable rollout. Each upgrade saves the latest completed analysis, peak/low values and notification history before cancelling the old run and starting its replacement. Active analysis/delivery steps are allowed to finish first. Health and protected monitor status report the remaining legacy runs. Setup also recovers a stale pair monitor while preserving its registry and launch cursor. Tests are synthetic regressions, not a historical replay proving an alert at a particular age or price.
+Existing launch workflows remain pinned to their original deployment. After deploying a policy change, authenticated `POST /api/admin/monitor` or the setup action queues a durable rollout. Each upgrade saves the latest completed analysis, peak/low values and notification history before cancelling the old run and starting its replacement. Active analysis/delivery steps are allowed to finish first. Health and protected monitor status report the remaining legacy runs. Setup also upgrades an outdated or recovers a stale pair monitor while preserving its registry and launch cursor. Tests are synthetic regressions, not a historical replay proving an alert at a particular age or price.
+
+## Open concept discovery and observations (v2)
+
+The system does not need a previously successful token name to produce a yellow **OBSERVATION**. It compares the current name with earlier Stonk launches and awards one originality point for each of: a distinctive readable name; no earlier close name in the declared pair comparison; no close name in at least 20 earlier cross-pair sample rows; an individual concept beyond the quote asset name; native pair rewards or measured first-mover context. At least 3/5, a distinctive name, complete retrieval of the declared comparison windows and no detected copy are mandatory on this route. An existing documented pair association >=3/5 is the other observation route. The two scores have different labels; originality is never presented as semantic pair understanding.
+
+Comparison covers the newest 100 and highest-market-cap 100 launches on the pair (all launches when there are <=100), plus the newest 100 and volume-leading 100 cross-pair tokens. The cross-pair sample is cached for two minutes. Every requested pair window must be fully retrieved; missing pages/data cannot earn the comparison point. Names are normalized; simple sequel prefixes/suffixes and one-character variants of longer names with the same ticker are detected. Only records created before the candidate are compared. Ticker overlap alone is not a copy. Large-pair comparisons are explicitly labelled recent-and-leading, not complete all-time coverage; copies outside the windows may be missed. This is relative novelty in the observed Stonk catalogue, not worldwide uniqueness, ownership verification, AI learning or a prediction of returns. Images, multilingual puns and deeper conceptual copies can be missed.
+
+OBSERVATION still needs fresh graph evidence and insider-supply measurement, explicitly revoked mint/freeze authorities, complete holders with known pool exclusions and creator balance, >=60 holders, >=$10k liquidity, activity score >=70, and no known hard wallet/concentration risks. Mode caps are $750k/$5m/$10m; mode volume minimums are $10k/$20k/$50k; at least 30 buys in 5m (FLASH) or 1h (other modes), with buys >=80% of sells. Peak retention must be >=25% when known; reawakening needs two measured renewal signals. Missing bundles/snipers/funding/fresh-wallet coverage or on-chain unique buyers is permitted only in this explicitly unverified tier. Delivery rechecks freshness. Observations are deduplicated, can upgrade to a verified signal, and retain later invalidation warnings.
+
+No preset quota of alerts exists: valid candidates generate alerts; quiet markets or unavailable core evidence can still mean no token signal. The system does not buy tokens.
 
 ## Hard wallet gate
 
@@ -64,9 +74,9 @@ Wallet verification has only three outcomes:
 - `RISKY`: a linked insider/bundle/sniper/funder threshold or another hard wallet risk was hit.
 - `UNKNOWN`: evidence is incomplete.
 
-**`UNKNOWN` blocks every positive token alert, including FLASH, EARLY WATCH, BUILD, REAWAKENING, RECLAIM, GEM and early name candidates.** Missing evidence yields `NO SIGNAL` and continued observation. A high activity/potential score cannot bypass this gate.
+**`UNKNOWN` blocks verified signals: FLASH, EARLY WATCH, BUILD, REAWAKENING, RECLAIM, GEM and early name candidates.** It can qualify for the separate yellow OBSERVATION tier below. A high activity score never converts missing security evidence into a passed check. Absolute graph-linked wallet count is advisory: the existing 8% insider-supply limit remains a hard stop.
 
-All positive alerts additionally require narrative >= 3/5, a documented name/pair association, complete holder sampling and known pool exclusions, a measured creator balance, market cap, liquidity >= $10,000, observed volume/buy/sell flow and an on-chain buyer sample. Required observations expire after five minutes; freshness is checked again immediately before sending, including on delivery retries. Buyer counts describe the most recent 100 pool transactions within five minutes, not a complete census. Fetch timestamps are observation times, not guarantees about the upstream indexer's latency. Risk warnings for previously alerted tokens bypass the positive-alert gate. A score out of 100 describes activity/potential, not a probability or security rating.
+Verified alerts additionally require narrative >= 3/5, a documented name/pair association, complete holder sampling and known pool exclusions, a measured creator balance, market cap, liquidity >= $10,000, observed volume/buy/sell flow and an on-chain buyer sample. Required observations expire after five minutes; freshness is checked again immediately before sending, including on delivery retries. Buyer counts describe the most recent 100 pool transactions within five minutes, not a complete census. Fetch timestamps are observation times, not guarantees about the upstream indexer's latency. Risk warnings for previously alerted tokens bypass the positive-alert gate. A score out of 100 describes activity/potential, not a probability or security rating.
 
 The optional `WALLET_RISK_API_URL` receives:
 
@@ -148,7 +158,7 @@ npm test
 npm run build
 ```
 
-Regression tests cover the original LinkedInu pattern, the JUPCAT second-wave miss, the `UNKNOWN ≠ CLEAN` rule, linked-wallet rejection and state-transition notifications.
+Regression tests cover the original LinkedInu pattern, the JUPCAT second-wave miss, the `UNKNOWN ≠ CLEAN` rule, linked-supply rejection, new-concept observations, copy filtering and state-transition notifications.
 
 ## Security
 

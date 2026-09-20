@@ -3,6 +3,7 @@ import type { SignalStatus } from "./types";
 const strength: Record<SignalStatus, number> = {
   "NO SIGNAL": 0,
   "SKIP": 0,
+  "OBSERVATION": 0.5,
   "FLASH": 1,
   "EARLY WATCH": 2,
   "BUILD WATCH": 2,

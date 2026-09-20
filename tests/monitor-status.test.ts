@@ -3,7 +3,7 @@ import { emptyMonitorState } from "@/lib/pair-events";
 
 const sdk = vi.hoisted(() => ({ hook: vi.fn(), list: vi.fn(), step: vi.fn(), run: vi.fn() }));
 vi.mock("workflow/api", () => ({ getHookByToken: sdk.hook }));
-vi.mock("workflow/runtime", () => ({ getWorld: () => ({ steps: { list: sdk.list, get: sdk.step }, runs: { get: sdk.run } }) }));
+vi.mock("workflow/runtime", () => ({ getWorld: () => ({ getDeploymentId: async () => "current", steps: { list: sdk.list, get: sdk.step }, runs: { get: sdk.run } }) }));
 import { pairMonitorStatus } from "@/lib/pair-monitor-status";
 
 beforeEach(() => { vi.clearAllMocks(); sdk.hook.mockResolvedValue({ runId: "run" }); sdk.run.mockResolvedValue({ runId: "run" }); });

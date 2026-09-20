@@ -86,6 +86,7 @@ export async function getWalletRiskMetrics(mint: string, launchedAt: number, kno
   };
 
   const flags: string[] = [];
+  const warnings: string[] = [];
   const supply = n(rug?.token?.supply);
   const networks: any[] = Array.isArray(rug?.insiderNetworks) ? rug.insiderNetworks : [];
   const insiderRaw = networks.reduce((sum, network) => sum + (n(network?.tokenAmount) || 0), 0);
@@ -117,7 +118,7 @@ export async function getWalletRiskMetrics(mint: string, launchedAt: number, kno
 
   if (rug?.rugged === true) flags.push("RugCheck marks token as rugged");
   if ((graphInsiderWallets || 0) >= WALLET_LIMITS.graphInsiderWallets) {
-    flags.push(`${graphInsiderWallets} linked insider wallets detected`);
+    warnings.push(`${graphInsiderWallets} graph-linked wallets; concentration, not count, determines the risk gate`);
   }
   if ((insiderSupplyPct || 0) > WALLET_LIMITS.insiderSupplyPct) {
     flags.push(`linked insiders control ${insiderSupplyPct?.toFixed(1)}%`);
@@ -159,6 +160,7 @@ export async function getWalletRiskMetrics(mint: string, launchedAt: number, kno
     mintAuthorityRevoked: authority("mintAuthority", tracker.mintAuthorityRevoked),
     freezeAuthorityRevoked: authority("freezeAuthority", tracker.freezeAuthorityRevoked),
     flags,
+    warnings,
     excludedTokenAccounts,
     initialBundledSupplyPct: tracker.initialBundledSupplyPct,
     trackerStatus: tracker.status,

@@ -1,6 +1,6 @@
 import { isAlertStatus } from "./transitions";
 import type { SignalStatus, Snapshot } from "./types";
-import { positiveAlertBlockers, walletThresholdRisks } from "./alert-policy";
+import { observationBlockers, positiveAlertBlockers, walletThresholdRisks } from "./alert-policy";
 
 type SnapshotBase = Omit<Snapshot, "score" | "status" | "reasons" | "risks">;
 
@@ -82,7 +82,7 @@ export function classify(
   } else if (s.wallet.verification === "RISKY") {
     fatal.push(...(s.wallet.flags.length ? s.wallet.flags : ["wallet gate RISKY"]));
   } else {
-    risks.push("wallet gate UNKNOWN — all positive alerts blocked");
+    risks.push("wallet gate UNKNOWN — verified signals blocked; observation may qualify");
     risks.push(...s.wallet.flags.slice(0, 2));
   }
 
@@ -114,7 +114,8 @@ export function classify(
   if (holdersPending) return { score: rawScore, status: "NO SIGNAL", reasons, risks: [...new Set(risks)] };
 
   const blockers = positiveAlertBlockers(s);
-  if (blockers.length) return { score: rawScore, status: "NO SIGNAL", reasons,
+  if (blockers.length) return { score: rawScore,
+    status: rawScore >= 70 && observationBlockers(s).length === 0 ? "OBSERVATION" : "NO SIGNAL", reasons,
     risks: [...new Set([...risks, `Awaiting required checks: ${blockers.join("; ")}`])] };
 
   let status: SignalStatus = "NO SIGNAL";

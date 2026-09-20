@@ -21,3 +21,10 @@ it("keeps the original monitor if successor persistence fails", async () => {
   await expect(ensurePairMonitor()).rejects.toThrow("queue unavailable");
   expect(sdk.cancel).not.toHaveBeenCalled();
 });
+it("moves an active monitor to the current deployment with its discovery cursor intact", async () => {
+  const state = { launchCursor: 123, discoveryLastSuccessAt: 456, seenLaunches: {}, knownPairs: [] };
+  sdk.status.mockResolvedValue({ status: "active", deploymentOutdated: true, runId: "old", state });
+  sdk.start.mockResolvedValue({ runId: "new" });
+  expect(await ensurePairMonitor()).toMatchObject({ status: "restarting", previousRunId: "old" });
+  expect(sdk.start.mock.calls[0][1]).toEqual([state, "old"]);
+});

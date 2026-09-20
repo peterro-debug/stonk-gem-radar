@@ -22,11 +22,10 @@ describe("real pair associations without weakening safety", () => {
     expect(maySendAlert(s, false)).toBe(true);
     s.wallet.verification = "UNKNOWN";
     expect(maySendAlert(s, false)).toBe(false);
-    s.wallet.verification = "RISKY";
     s.wallet.graphInsiderWallets = c.links;
     s.wallet.insiderSupplyPct = c.pct;
-    s.wallet.flags = [`${c.links} linked insider wallets detected`];
-    expect(classify(s).status).toBe("SKIP");
+    s.wallet.flags = [];
+    expect(classify(s).status).toBe(c.pct > 8 ? "SKIP" : "OBSERVATION");
   });
   it("does not match unrelated pairs or incidental substrings", () => {
     expect(nameAssociation({ name: "LinkedInu" }, { symbol: "GOOGL" }).matched).toBe(false);

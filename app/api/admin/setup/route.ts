@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     botUsername = bot.username;
     const chatId = await resolveTelegramChatId();
     await sendTelegram(
-      "✅ Telegram-koblingen fungerer. Nye positive tokenvarsler krever minst 3/5, begrunnet parring og komplette sikkerhetssjekker. Manglende datakilder holder signaler tilbake.",
+      "✅ Radaren er oppdatert. Nye konsepter vurderes mot tidligere lanseringer. 🟡 OBSERVASJON: lovende aktivitet, ufullstendig verifisert. 🟢 Verifiserte signaler: minst 3/5 parmatch og komplette kontroller. Påviste høyrisikofunn stoppes fortsatt.",
     );
     telegram = { ok: true, botUsername: bot.username, chatId };
   } catch (error) {

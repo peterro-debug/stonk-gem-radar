@@ -4,7 +4,7 @@ import { pairMonitorStatus } from "./pair-monitor-status";
 
 export async function ensurePairMonitor() {
   const current = await pairMonitorStatus();
-  if (current.status === "stale" && current.state && current.runId) {
+  if ((current.status === "stale" || current.deploymentOutdated) && current.state && current.runId) {
     // Persist the cursor in the successor's input before cancelling the stale run.
     // Its predecessor-aware lock waits until the previous run releases ownership.
     const next = await start(pairMonitorWorkflow, [current.state, current.runId]);

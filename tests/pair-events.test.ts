@@ -43,6 +43,21 @@ describe("new pair events and name relationships", () => {
 });
 
 describe("source failures and X cursor", () => {
+  it("rescans active older concepts every 30 minutes without duplicating launch entries", async () => {
+    vi.stubEnv("X_BEARER_TOKEN", "");
+    const time = Date.now();
+    const row = { mint: "older-active", pool: "pool", quote: pepe, createdAt: new Date(time - 86400_000).toISOString(),
+      market: { marketCapUsd: 100_000, volume24hUsd: 50_000, priceChange24h: 50 } };
+    const fetcher = vi.fn().mockImplementation(async (url: string) => Response.json(url.endsWith("/pairs")
+      ? { data: { pairs: [pepe] } } : { data: { tokens: [row] } }));
+    vi.stubGlobal("fetch", fetcher);
+    const result = await pollPairSources(emptyMonitorState());
+    expect(result.launches.map(l => l.mint)).toEqual(["older-active"]);
+    expect(result.state.discoveryLastSuccessAt).toBeGreaterThan(0);
+    fetcher.mockClear();
+    expect((await pollPairSources(result.state)).launches).toEqual([]);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes("sort=volume"))).toHaveLength(0);
+  });
   it("reports X as not configured without making a request", async () => {
     vi.stubEnv("X_BEARER_TOKEN", "");
     vi.stubGlobal("fetch", vi.fn());

@@ -13,6 +13,19 @@ const specialist = () => ({ mint: "mint", checkedAt: Date.now(), bundleChecked: 
   bundledSupplyPct: 0, sniperSupplyPct: 0, commonFunderSupplyPct: 0, freshWalletSupplyPct: 0 });
 
 describe("Solana Tracker and evidence validation", () => {
+  it("uses linked supply concentration, not absolute graph-wallet count, as the hard gate", async () => {
+    vi.stubEnv("SOLANA_TRACKER_API_KEY", ""); vi.stubEnv("GMGN_API_KEY", "");
+    vi.stubEnv("WALLET_RISK_API_URL", "https://specialist.example/test");
+    let networkAmount = 10;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => Response.json(url.includes("rugcheck")
+      ? { ...rug, graphInsidersDetected: 323, insiderNetworks: [{ tokenAmount: networkAmount }] } : specialist())));
+    const small = await getWalletRiskMetrics("mint", 1);
+    expect(small.verification).toBe("CLEAN");
+    expect(small.insiderSupplyPct).toBe(1);
+    expect(small.warnings?.[0]).toContain("323");
+    networkAmount = 95;
+    expect((await getWalletRiskMetrics("mint", 1)).verification).toBe("RISKY");
+  });
   it("uses the documented dedicated bundle response and distinguishes zero from missing", () => {
     const now = Date.now();
     expect(parseTrackerEvidence("mint", token(now), bundles, now)).toMatchObject({ status: "ok", bundledSupplyPct: 0, sniperSupplyPct: 0 });

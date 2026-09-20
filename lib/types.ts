@@ -2,6 +2,7 @@ export type ScanMode = "FLASH" | "BUILD" | "REAWAKENING";
 
 export type SignalStatus =
   | "NO SIGNAL"
+  | "OBSERVATION"
   | "FLASH"
   | "EARLY WATCH"
   | "BUILD WATCH"
@@ -141,6 +142,7 @@ export type WalletRiskMetrics = {
   mintAuthorityRevoked?: boolean;
   freezeAuthorityRevoked?: boolean;
   flags: string[];
+  warnings?: string[];
   excludedTokenAccounts: string[];
   initialBundledSupplyPct?: number;
   trackerStatus?: string;
@@ -161,6 +163,21 @@ export type NarrativeMetrics = {
   rewardFit: boolean;
   firstMoverFit: boolean;
   method?: "rules";
+};
+
+// Originality is measured against an explicitly scoped catalogue, not the whole internet.
+export type NoveltyMetrics = {
+  checkedAt: number;
+  score: number;
+  distinctive: boolean;
+  duplicate: boolean;
+  comparedTokens: number;
+  pairCoverageComplete: boolean;
+  pairComparisonReady: boolean;
+  pairScope: "complete" | "recent-and-leading" | "unavailable";
+  reasons: string[];
+  matches: Array<{ mint: string; name: string; samePair: boolean }>;
+  method: "catalogue-v1";
 };
 
 export type TrendMetrics = {
@@ -188,6 +205,7 @@ export type Snapshot = {
   stonk: StonkMetrics;
   wallet: WalletRiskMetrics;
   narrative: NarrativeMetrics;
+  novelty?: NoveltyMetrics;
   trend: TrendMetrics;
   peakMarketCap?: number;
   lowMarketCap?: number;

@@ -74,5 +74,7 @@ export function summarizeDemo(snapshot: Snapshot) {
       reasons: snapshot.reasons,
       risks: snapshot.risks,
     },
+    narrative: snapshot.narrative,
+    novelty: snapshot.novelty,
   };
 }

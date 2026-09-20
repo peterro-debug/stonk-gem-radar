@@ -4,7 +4,8 @@ import { getHolderMetrics, getTokenMeta, getTraderMetrics } from "./helius";
 import { narrativeScore } from "./narrative";
 import { getQuoteMeta } from "./pairs";
 import { classify } from "./score";
-import { getStonkContext } from "./stonk";
+import { getStonkContext, recentConceptCatalogue } from "./stonk";
+import { assessNovelty } from "./novelty";
 import { calculateTrend } from "./trends";
 import { getWalletRiskMetrics } from "./wallet-risk";
 import type { AnalysisContext, Launch, PairMetrics, Snapshot, TokenMeta } from "./types";
@@ -29,12 +30,13 @@ function mergeToken(primary: TokenMeta, fallback: TokenMeta): TokenMeta {
 }
 
 export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {}): Promise<Snapshot> {
-  const [stonk, dexPair, wallet, heliusToken, quoteFallback] = await Promise.all([
+  const [stonk, dexPair, wallet, heliusToken, quoteFallback, recentConcepts] = await Promise.all([
     getStonkContext(launch.mint, launch.quoteMint),
     getPairMetrics(launch.mint, launch.quoteMint),
     getWalletRiskMetrics(launch.mint, launch.launchedAt, launch.baseVault ? [launch.baseVault] : []),
     getTokenMeta(launch.mint),
     getQuoteMeta(launch.quoteMint),
+    recentConceptCatalogue(),
   ]);
 
   const excludedTokenAccounts = [
@@ -42,7 +44,7 @@ export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {
     ...wallet.excludedTokenAccounts,
   ].filter((value): value is string => Boolean(value));
   const [holders, traders] = await Promise.all([getHolderMetrics(launch.mint, {
-    creator: launch.creator,
+    creator: launch.creator || stonk.creator,
     excludeTokenAccounts: [...new Set(excludedTokenAccounts)],
   }).catch(() => ({ holders: 0, sampleComplete: false, poolExclusionKnown: excludedTokenAccounts.length > 0 })),
     getTraderMetrics(launch.poolState, launch.mint, launch.baseVault || excludedTokenAccounts[0], launch.launchedAt),
@@ -83,12 +85,15 @@ export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {
   const retention = peakMarketCap && marketCap ? marketCap / peakMarketCap : undefined;
   const trend = calculateTrend(pair, holders.holders, traders.uniqueBuyers, lowMarketCap, context.previous);
   const narrative = narrativeScore(token, quote, stonk.rewards);
+  const novelty = assessNovelty({ mint: launch.mint, launchedAt: launch.launchedAt, token, quote,
+    rewards: stonk.rewards, rows: [...stonk.catalogue.rows, ...recentConcepts],
+    pairCoverageComplete: stonk.catalogue.pairCoverageComplete, pairComparisonReady: stonk.catalogue.pairComparisonReady, now });
 
   const base = {
     checkedAt: now,
     ageMinutes,
     mode: modeForAge(ageMinutes),
-    launch,
+    launch: { ...launch, creator: launch.creator || stonk.creator },
     token,
     quote,
     pair,
@@ -98,6 +103,7 @@ export async function analyzeLaunch(launch: Launch, context: AnalysisContext = {
     stonk: stonk.stonk,
     wallet,
     narrative,
+    novelty,
     trend,
     peakMarketCap,
     lowMarketCap,

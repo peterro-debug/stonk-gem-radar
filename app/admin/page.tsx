@@ -80,8 +80,8 @@ export default function AdminPage() {
         Den kjøper ingenting og starter ingen varig overvåkning.
       </p>
       <p>Parregisteret sjekkes omtrent hvert minutt. X krever egen lesetilgang; status viser siste vellykkede innhenting.
-        Positive tokenvarsler krever minst 3/5, tydelig parring og komplette sikkerhetssjekker.
-        Manglende data holder kandidaten tilbake. Oppdatering flytter eldre overvåkninger med historikken bevart.</p>
+        Gule observasjoner kan varsle om nye konsepter med tydelig oppgitte kunnskapshull.
+        Verifiserte signaler krever minst 3/5 parmatch og komplette kontroller. Aktivitet sjekkes også hvert 30. minutt. Oppdatering flytter eldre overvåkninger med historikken bevart.</p>
       {result && (
         <section aria-live="polite" style={{ marginTop: 24 }}>
           <h2>

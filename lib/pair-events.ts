@@ -20,6 +20,8 @@ export type PairMonitorState = {
   registryError?: string;
   launchesError?: string;
   lastStartedCount?: number;
+  discoveryLastSuccessAt?: number;
+  discoveryError?: string;
   pendingNotifications?: PairEvent[];
   notificationError?: string;
 };

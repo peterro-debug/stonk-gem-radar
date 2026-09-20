@@ -1,3 +1,7 @@
+# Historisk testnotat for v1
+
+Dette dokumentet beskriver testen før policy `originality-and-observation-v2`. Den senere justeringen av grafantall, gule observasjoner og originalitetsvurdering er dokumentert i [nattoppdateringen](night-update-2026-09-20.md). V1-resultatene under er bevart som sammenligningsgrunnlag.
+
 # Kontroll av fire kjente Stonk-tokens — 20. september 2026
 
 Dette er en test av oppdagelsesformat, navnemodell og walletfilter med innhentede data. Det er **ikke en historisk replay av kjøpssignaler**. Ingen data om volum, eiere, bundles eller finansiering ved lansering er oppdiktet.

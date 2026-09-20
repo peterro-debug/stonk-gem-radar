@@ -19,7 +19,7 @@ describe("mandatory checks before every positive alert", () => {
   it.each(["FLASH", "EARLY WATCH", "BUILD WATCH", "REAWAKENING", "RECLAIM", "GEM"] as const)("blocks %s with incomplete wallets", status => {
     const s = verifiedSnapshot(); s.status = status; s.wallet.verification = "UNKNOWN";
     expect(maySendAlert(s, false)).toBe(false);
-    expect(classify(s).status).toBe("NO SIGNAL");
+    expect(classify(s).status).toBe("OBSERVATION");
   });
   it("requires real measurements even when a provider claims CLEAN and analyzed", () => {
     const s = verifiedSnapshot(); s.wallet.commonFunderSupplyPct = undefined;
@@ -39,13 +39,17 @@ describe("mandatory checks before every positive alert", () => {
       (s: Snapshot) => { s.holders.sampleComplete = undefined; },
       (s: Snapshot) => { s.holders.creatorPct = undefined; },
       (s: Snapshot) => { s.pair.liquidityUsd = 3_000; },
-      (s: Snapshot) => { s.traders = {}; },
       (s: Snapshot) => { s.narrative.pairFit = false; },
     ]) {
       const s = verifiedSnapshot(); mutate(s);
       expect(classify(s).status).toBe("NO SIGNAL");
       expect(isEarlyNameCandidate(s)).toBe(false);
     }
+  });
+  it("keeps missing on-chain buyers out of verified signals while allowing a labelled observation", () => {
+    const s = verifiedSnapshot(); s.traders = {};
+    expect(maySendAlert(s, false)).toBe(false);
+    expect(classify(s).status).toBe("OBSERVATION");
   });
   it("keeps invalidation delivery for previously alerted tokens regardless of missing checks or narrative", () => {
     const s = verifiedSnapshot();
