@@ -12,14 +12,17 @@ import type { Launch, PairEvent, QuoteMeta } from "@/lib/types";
 import { launchWorkflow } from "./launch-workflow";
 import { discoverCandidates } from "@/lib/discovery";
 
+import { ensureFttWatch, fttLaunchEvent, pairCohortWindowOpen, readFttReadiness, shouldNotifyFtt, formatFttReady, FTT_MINT, type FttWatch } from "@/lib/ftt-watch";
+
 const errorText = (error: unknown) => error instanceof Error ? error.message : "source unavailable";
 
 export async function pollPairSources(previous: PairMonitorState) {
   "use step";
   const now = Date.now();
+  if (previous.fttWatch) previous = ensureFttWatch(previous);
   let state: PairMonitorState = { ...previous, checkedAt: now, lastStartedCount: 0,
     pairLaunchWatches: Object.fromEntries(Object.entries(previous.pairLaunchWatches || {})
-      .filter(([, watch]) => now - watch.eventDetectedAt < EVENT_WINDOW_MS)
+      .filter(([mint, watch]) => (Boolean(previous.fttWatch) && mint === FTT_MINT) || now - watch.eventDetectedAt < EVENT_WINDOW_MS)
       .map(([mint, watch]) => [mint, { ...watch, ranked: [...(watch.ranked || [])],
         cohort: [...(watch.cohort || [])], momentumNotified: { ...(watch.momentumNotified || {}) },
         notifiedMints: { ...watch.notifiedMints } }])),
@@ -38,6 +41,7 @@ export async function pollPairSources(previous: PairMonitorState) {
     state = observed.state;
     state.pairLaunchWatches = state.pairLaunchWatches || {};
     for (const event of observed.added.filter(event => event.source === "stonk-registry")) {
+      if (event.quoteMint === FTT_MINT && state.fttWatch && state.pairLaunchWatches[FTT_MINT]) continue;
       state.pairLaunchWatches[event.quoteMint] = {
         eventDetectedAt: event.detectedAt,
         ranked: [],
@@ -65,19 +69,23 @@ export async function pollPairSources(previous: PairMonitorState) {
   // Critical path for newly enabled main/quote pairs. This is deliberately
   // independent from the high-volume global launch feed, so a global backlog
   // cannot hide the first launches against a fresh pair such as PEPE/JEANPHIL.
-  const activePairEvents = [...new Map(
+  const registryPairEvents = [...new Map(
     state.events
       .filter(event => now >= event.detectedAt && now - event.detectedAt <= EVENT_WINDOW_MS)
       .sort((a, b) => b.detectedAt - a.detectedAt)
       .map(event => [event.quoteMint, event]),
   ).values()].slice(0, 10);
+  const pinnedFttEvent = fttLaunchEvent(state);
+  const activePairEvents = pinnedFttEvent
+    ? [pinnedFttEvent, ...registryPairEvents.filter(e => e.quoteMint !== FTT_MINT)].slice(0, 10)
+    : registryPairEvents;
   const pairFeeds = await Promise.allSettled(activePairEvents.map(async event => {
     const feed = await getPairLaunchFeed(event.quoteMint);
     const watch = state.pairLaunchWatches?.[event.quoteMint];
-    let cohortRows = watch && now - event.detectedAt <= 2 * 60 * 60_000
+    let cohortRows = pairCohortWindowOpen(event, watch, now, Boolean(state.fttWatch))
       ? firstPairLaunchesFromRows(feed.rows, event.detectedAt - 5 * 60_000, 200)
       : [];
-    if (watch && now - event.detectedAt <= 2 * 60 * 60_000
+    if (pairCohortWindowOpen(event, watch, now, Boolean(state.fttWatch))
       && (feed.total ?? feed.rows.length) > feed.rows.length) {
       cohortRows = await listFirstPairLaunchesSince(event.quoteMint, event.detectedAt - 5 * 60_000, 200);
     }
@@ -221,6 +229,17 @@ async function enqueueLaunch(launch: Launch) {
   } catch { return { error: "Could not enqueue launch analysis; retrying next poll" }; }
 }
 
+async function checkFtt(watch: FttWatch) {
+  "use step";
+  return readFttReadiness(watch);
+}
+
+async function notifyFtt(watch: FttWatch) {
+  "use step";
+  try { await sendTelegram(formatFttReady(watch), FTT_MINT); return true; }
+  catch { return false; }
+}
+
 async function notifyPair(event: PairEvent, quote?: QuoteMeta) {
   "use step";
   try { await sendTelegram(formatPairEvent(event, quote), event.quoteMint); return true; }
@@ -266,9 +285,19 @@ export async function pairMonitorWorkflow(seed?: PairMonitorState, predecessor?:
     await sleep("2s");
   }
   if (!lock) throw new FatalError("Pair monitor handoff did not release its lock");
-  let state = seed ?? emptyMonitorState();
+  let state = ensureFttWatch(seed ?? emptyMonitorState());
   try {
     for (let tick = 0; tick < 360; tick++) {
+      // Check/deliver readiness before the heavier global discovery/analysis lane.
+      state.fttWatch = await checkFtt(state.fttWatch!);
+      if (shouldNotifyFtt(state.fttWatch)) {
+        if (await notifyFtt(state.fttWatch)) {
+          state.fttWatch = { ...state.fttWatch, notifiedAt: Date.now(), deliveryError: undefined };
+        } else {
+          state.fttWatch = { ...state.fttWatch, deliveryError: "Telegram readiness delivery pending; retrying on next confirmed-ready poll" };
+        }
+      }
+      await checkpoint(state);
       const result = await pollPairSources(state);
       state = result.state;
       // Queue analysis immediately; Telegram delivery is independent and can retry.
@@ -309,7 +338,7 @@ export async function pairMonitorWorkflow(seed?: PairMonitorState, predecessor?:
           momentumDeliveryFailed = true;
         }
       }
-      state.notificationError = pending.length || pairLaunchDeliveryFailed || momentumDeliveryFailed
+      state.notificationError = state.fttWatch?.deliveryError || pending.length || pairLaunchDeliveryFailed || momentumDeliveryFailed
         ? "Telegram delivery pending; retrying next poll" : undefined;
       await checkpoint(state);
       await sleep("60s");

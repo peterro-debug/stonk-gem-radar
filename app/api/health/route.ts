@@ -14,6 +14,8 @@ export async function GET() {
       pairMonitor: monitor.status,
       pairMonitorDeploymentOutdated: monitor.deploymentOutdated,
       checkedAt: monitor.state?.checkedAt,
+      fttActivationWatch: monitor.state?.fttWatch,
+      fttLaunchWatch: monitor.state?.pairLaunchWatches?.["EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv"],
       registryLastSuccessAt: monitor.state?.registryLastSuccessAt,
       registryError: monitor.state?.registryError,
       launchesLastSuccessAt: monitor.state?.launchesLastSuccessAt,
