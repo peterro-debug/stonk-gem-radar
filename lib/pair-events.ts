@@ -118,9 +118,9 @@ export function formatPairLaunchAlert(alert: PairLaunchAlert, quote?: QuoteMeta)
   return [
     `⚡ STONK — ${q} LAUNCH #${alert.rank}`,
     `${token} / ${q}`,
-    `Offisiell rekkefølge i Stonk-feeden: #${alert.rank}`,
+    `STONK-feed rank: #${alert.rank}`,
     `Token mint: ${alert.mint}`,
     `Opprettet: ${new Date(alert.launchedAt).toISOString()}`,
-    "Analyse er satt i gang. Dette er et rått discovery-varsel, ikke GEM-godkjenning.",
+    "Radaren starter analyse så snart markeds- og pooldata er klare. Dette er et rått discovery-varsel, ikke GEM-godkjenning.",
   ].join("\n");
 }

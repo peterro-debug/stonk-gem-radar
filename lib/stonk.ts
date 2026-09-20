@@ -217,11 +217,15 @@ export async function listPairLaunches(quoteMint: string, pageSize = 100): Promi
 }
 
 export function firstPairLaunchesFromRows(rows: StonkTokenRow[], since: number, limit = 3): StonkTokenRow[] {
-  return [...new Map(rows.map(row => [row.mint, row])).values()]
+  const unique = [...new Map(rows.map(row => [row.mint, row])).values()];
+  const newestOrder = new Map(unique.map((row, index) => [row.mint, index]));
+  return unique
     .filter(row => row.mint && Number.isFinite(Date.parse(row.createdAt || ""))
       && Date.parse(row.createdAt || "") >= since)
     .sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || "")
-      || a.mint.localeCompare(b.mint))
+      // API sort=newest is descending. For exact timestamp ties, reverse the
+      // feed's stable order instead of inventing an alphabetical mint order.
+      || (newestOrder.get(b.mint)! - newestOrder.get(a.mint)!))
     .slice(0, limit);
 }
 
