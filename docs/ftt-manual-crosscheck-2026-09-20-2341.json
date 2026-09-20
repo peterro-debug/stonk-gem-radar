@@ -1,0 +1,50 @@
+{
+  "description": "Selected fields transcribed from public API and read-only Solana RPC responses in the linked diagnostic jobs. This is an evidence extract, not a complete raw capture, historical launch replay, security audit or confirmation of official Stonk registration. Norwegian display times are conversions of the recorded timestamps to Europe/Oslo.",
+  "sourceJobs": [
+    "https://github.com/peterro-debug/stonk-gem-radar/actions/runs/35539271790/job/106153849696",
+    "https://github.com/peterro-debug/stonk-gem-radar/actions/runs/35539353847/job/106154083050",
+    "https://github.com/peterro-debug/stonk-gem-radar/actions/runs/35539456331/job/106154365954"
+  ],
+  "quoteMint": "EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv",
+  "windowUtc": {"from":"2026-09-20T21:37:27.518Z", "to":"2026-09-20T21:41:08.162Z"},
+  "stonk": {
+    "registry": {"url":"https://www.stonkfun.xyz/api/public/v1/pairs", "http":200, "observedAt":"2026-09-20T21:37:27.540Z", "generatedAt":"2026-09-20T21:32:37.111Z", "cacheAgeSeconds":290, "pairCount":521, "ftt":{"mint":"EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv","name":"FTX Token","symbol":"FTT","decimals":8,"category":"custom","launchable":true,"launchLabReady":true}},
+    "pricing": {"url":"https://www.stonkfun.xyz/api/public/v1/launchlab/pricing?quoteMint=EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv","checks":[{"observedAt":"2026-09-20T21:37:27.708Z","http":503},{"observedAt":"2026-09-20T21:37:30.265Z","http":503}],"error":{"code":"service_unavailable","message":"Pricing is unavailable right now. Try again shortly.","retryable":true,"retryAfterSeconds":30},"controlQuotes":{"SOL":{"http":200},"PEPE":{"http":200}}},
+    "fttCatalogue": {"url":"https://www.stonkfun.xyz/api/public/v1/tokens?quoteMint=EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv&sort=newest&page=1&pageSize=5","http":200,"observedAt":"2026-09-20T21:37:29.197Z","generatedAt":"2026-09-20T21:37:29.189Z","total":0,"tokens":[],"recheck":{"observedAt":"2026-09-20T21:39:08.801Z","http":200,"cacheAgeSeconds":99,"total":0}},
+    "pepeCatalogueControl":{"observedAt":"2026-09-20T21:37:29.322Z","http":200,"total":758},
+    "childDetailChecks":{"observedAtUtcRange":["2026-09-20T21:39:08.214Z","2026-09-20T21:39:08.562Z"],"pathPattern":"/api/public/v1/tokens/{mint}","allFourSampledChildMintsHttp":404,"error":{"code":"not_found","message":"No platform pool exists for this mint."},"exactMintSearchForSTXAndFRIED":{"http":200,"total":0}}
+  },
+  "sampledPools": [
+    {"name":"Shitcoin Futures Exchange","symbol":"STX","mint":"8rq59Z7rjezyuJpEYBCCWG7iEdEuL6EevpUfMoqbcBQ5","pool":"464iJip1fGczMYgCjVGZ7D5dYEbUApgdzkzN6bt5jwWt","quoteMint":"EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv","openTimeUnixSeconds":1789933494,"openTimeOslo":"2026-09-20T21:44:54+02:00","dexSnapshot":{"observedAt":"2026-09-20T21:39:08.280Z","priceUsd":"0.0001912","marketCapUsd":191251,"liquidityUsd":25441.8,"reportedVolume24hUsd":3470762.02,"reportedVolume1hUsd":102478.99,"reportedVolume5mUsd":2215.81},"metadataUri":"https://m.rapidlaunch.io/m/73xhSNE7N"},
+    {"name":"Sam Bankman-Fried","symbol":"FRIED","mint":"8DCYx1LvF5Pcb8YsR83VDkSBbHZfT47Z9n74pA1VZZwZ","pool":"AExNh1GHDubKy3aMKzFCUa4soFdDzsGnyisSvg7bhQMg","quoteMint":"EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv","openTimeUnixSeconds":1789934353,"openTimeOslo":"2026-09-20T21:59:13+02:00","dexSnapshot":{"observedAt":"2026-09-20T21:39:08.409Z","priceUsd":"0.00003120","marketCapUsd":31209,"liquidityUsd":5649.19,"reportedVolume24hUsd":300134.17,"reportedVolume1hUsd":19180.81},"metadataUri":"https://ipfs.launchblitz.ai/async/8DCYx1LvF5Pcb8YsR83VDkSBbHZfT47Z9n74pA1VZZwZ.json"},
+    {"name":"Fat Titties Token","symbol":"FTT","mint":"4Rqn7bPaq4fq4HhSJMWRScAWXF4jMukZb31trpT2fZyT","pool":"A6YzVNPGgubJP7d9cJkxAgzMYeuwBt5iSwdzLyLmJrWQ","quoteMint":"EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv","openTimeUnixSeconds":1789933483,"openTimeOslo":"2026-09-20T21:44:43+02:00","dexSnapshot":{"observedAt":"2026-09-20T21:39:08.503Z","priceUsd":"0.000001240","marketCapUsd":1241,"liquidityUsd":1383.69,"reportedVolume24hUsd":164989.66},"metadataUri":"https://md.sdfgsdfsdf.uk/metadata/cFDkN15g"},
+    {"name":"ftx 2.0","symbol":"FTX2.0","mint":"GsK7Ssy6UfTkkerHTdcSBtZA72Uixn9E8AGqAoeNKnKL","pool":"EtQPjERg5eXj7iSH4Cp2xyvNMNufqr6iDqu3jMojfxcr","quoteMint":"EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv","openTimeUnixSeconds":1789933743,"openTimeOslo":"2026-09-20T21:49:03+02:00","dexSnapshot":{"observedAt":"2026-09-20T21:39:08.633Z","priceUsd":"0.000002328","marketCapUsd":2329,"liquidityUsd":1300.28,"reportedVolume24hUsd":128540.68}}
+  ],
+  "independentPoolAccountChecks": {
+    "rpc":"https://api.mainnet-beta.solana.com","method":"getMultipleAccounts","commitment":"confirmed","http":200,"observedAt":"2026-09-20T21:39:08.879Z","slot":448855345,"allFourPoolAccounts":{"owner":"CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C","accountSize":637,"poolStateDiscriminatorValidated":true,"containsExactFttAndStatedChildMint":true,"status":0,"swapEnabled":true,"poolCreator":"5CEbueQnq1Ym2uSSx2xXds3jQAqT1BDnkA59RZobSPAG"},
+    "layoutSource":"https://github.com/raydium-io/raydium-cp-swap/blob/master/programs/cp-swap/src/states/pool.rs","layoutBlobSha":"01a9b9faf7f9d13919dac11e2b4ce0b30ad075a0",
+    "vaultCheck":{"observedAt":"2026-09-20T21:39:08.893Z","http":200,"bothVaultsInitializedWithPositiveBalancesForAllFour":true,"stxVaultTokenUnits":"66002951.99391","stxPoolFttVaultTokenUnits":"44741.90455996"}
+  },
+  "successfulSwap": {
+    "pool":"464iJip1fGczMYgCjVGZ7D5dYEbUApgdzkzN6bt5jwWt","signature":"2iWTVgzFFveyXamkxagK4kDUkpWezhqQs57PL6RMGmVBk4TJL5oxG4JRchfE7umfJPnX8Efr4BCwekjx6HKuYUsH","rpcMethod":"getTransaction","http":200,"observedAt":"2026-09-20T21:41:07.922Z","blockTime":1789940466,"blockTimeOslo":"2026-09-20T23:41:06+02:00","slot":448855782,"transactionError":null,"selectedLog":"Program log: Instruction: SwapBaseInput","stxPoolVault":{"before":"60899340.000531","after":"60814175.822548"},"fttPoolVault":{"before":"46946.247608","after":"46985.31999255"},"recipientStxAmount":"84312.536203"
+  },
+  "infrastructureClues": {
+    "sampledChildMintsWithCheckedMetadata":["8rq59Z7rjezyuJpEYBCCWG7iEdEuL6EevpUfMoqbcBQ5","8DCYx1LvF5Pcb8YsR83VDkSBbHZfT47Z9n74pA1VZZwZ","4Rqn7bPaq4fq4HhSJMWRScAWXF4jMukZb31trpT2fZyT"],
+    "allThree":{"mintAuthority":null,"freezeAuthority":null,"transferFeeBasisPointsOldAndNew":100,"transferFeeConfigAuthority":"5KXDF6QnqhBj72hDtJNkkpFaQVUfbFXNybMsp3DiK6tD","withdrawWithheldAuthority":"5KXDF6QnqhBj72hDtJNkkpFaQVUfbFXNybMsp3DiK6tD","metadataUpdateAuthority":"WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh"},
+    "sameFeeAuthorityInStonkPricingControls":true,
+    "knownStonkWatPepePool":{"pool":"Fpiwj7PmH5QcLqaKkqQ9izC9pgZKtKfA6894e5jc7xyX","observedAt":"2026-09-20T21:41:08.162Z","rpcHttp":200,"owner":"CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C","poolCreator":"5CEbueQnq1Ym2uSSx2xXds3jQAqT1BDnkA59RZobSPAG","mint0":"PEPEqnuuCDbBC89p1u9vpnP1KQ2oj1xTcQBsjt9X55m","mint1":"8fogMoMGVZUwtoCB2ZrMkBhq76BzBNw4o2syZCYEvCZG"},
+    "interpretationLimit":"Shared platform authority/creator and metadata hosting do not prove common ultimate ownership, an official endorsement, or the exact original launch route."
+  },
+  "botHealth": {
+    "url":"https://stonk-gem-radar.vercel.app/api/health","http":200,"observedAt":"2026-09-20T21:37:29.136Z","revision":"959601b27dfe63481112b6bd6148fdcb401f26d1","pairMonitor":"active","outdated":false,"telegramConfigured":true,"ftt":{"since":1789936184609,"status":"pricing-unavailable","checkedAt":1789940240978,"error":"FTT pricing HTTP 503; valid launch configuration not confirmed","pricingHttpStatus":503,"launchable":true,"launchLabReady":true},"fttLaunch":{"eventDetectedAt":1789933572970,"ranked":[],"notifiedMints":{},"cohort":[],"momentumNotified":{}}
+  },
+  "raydiumFttPrice":{"url":"https://api-v3.raydium.io/mint/price?mints=EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv","http":200,"observedAt":"2026-09-20T21:37:29.753Z","priceUsd":"0.29665894519223573"},
+  "limitations": [
+    "The sampled pools are verified on Raydium/Solana, not accepted as officially registered Stonk launches; Stonk's own catalogue denies platform-pool records for these mints.",
+    "The root cause of Stonk pricing failure or missing catalogue entries is not established. External launch tooling is a possible explanation, not proven by metadata hosting alone.",
+    "Pool openTime is a configured trading-open timestamp, not necessarily original token creation, bonding-curve start, first successful trade or first-ever FTT pairing. The four pools are a sample, not a complete historical ordering.",
+    "DEX volume is reported gross activity; it is not independently verified organic buying, net inflow or unique-wallet demand. No bundler/insider/holder-concentration/LP-withdrawal or fee-authority safety approval was completed.",
+    "Production bot code/configuration and Telegram messages were not changed or sent in this manual investigation. Only public read diagnostics and this evidence extract were added to the existing nondeploying diagnostic branch.",
+    "The bot-specific first-launch ledger being empty is not proof that no other Telegram message type was sent."
+  ]
+}
