@@ -224,6 +224,32 @@ describe("source failures and X cursor", () => {
     }
   });
 
+  it("does not emit duplicate #1/#2/#3 alerts after successful delivery bookkeeping", async () => {
+    vi.stubEnv("X_BEARER_TOKEN", "");
+    const time = Date.now();
+    let state = observePairs(emptyMonitorState(), [pepe], time - 120_000).state;
+    state.discoveryLastSuccessAt = time;
+    const rows = [
+      { mint: "one", pool: "p1", quote: google, name: "ONE", createdAt: new Date(time - 30_000).toISOString() },
+      { mint: "two", pool: "p2", quote: google, name: "TWO", createdAt: new Date(time - 20_000).toISOString() },
+      { mint: "three", pool: "p3", quote: google, name: "THREE", createdAt: new Date(time - 10_000).toISOString() },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/pairs")) return Response.json({ data: { pairs: [pepe, google] } });
+      if (url.includes("quoteMint=google")) return Response.json({ data: { tokens: [...rows].reverse(), pagination: { total: 3 } } });
+      return Response.json({ data: { tokens: [] } });
+    }));
+    const first = await pollPairSources(state);
+    expect(first.pairLaunchAlerts.map(a => a.rank)).toEqual([1, 2, 3]);
+    state = first.state;
+    for (const alert of first.pairLaunchAlerts) {
+      state.pairLaunchWatches!.google.notifiedMints[alert.mint] = alert.rank;
+    }
+    const second = await pollPairSources(state);
+    expect(second.pairLaunchAlerts).toEqual([]);
+    expect(second.state.pairLaunchWatches!.google.ranked).toHaveLength(3);
+  });
+
   it("does not retroactively create ranked Telegram alerts for pair events from before this code was watching them", async () => {
     vi.stubEnv("X_BEARER_TOKEN", "");
     const time = Date.now();

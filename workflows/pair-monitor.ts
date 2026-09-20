@@ -230,14 +230,18 @@ export async function pairMonitorWorkflow(seed?: PairMonitorState, predecessor?:
         if (!await notifyPair(event, state.knownPairs.find(p => p.mint === event.quoteMint))) pending.push(event);
       }
       state.pendingNotifications = pending;
+      let pairLaunchDeliveryFailed = false;
       for (const alert of result.pairLaunchAlerts.sort((a, b) => a.rank - b.rank)) {
         const watch = state.pairLaunchWatches?.[alert.quoteMint];
         if (!watch || watch.notifiedMints[alert.mint]) continue;
         if (await notifyPairLaunch(alert, state.knownPairs.find(p => p.mint === alert.quoteMint))) {
           watch.notifiedMints[alert.mint] = alert.rank;
+        } else {
+          pairLaunchDeliveryFailed = true;
         }
       }
-      state.notificationError = pending.length ? "Telegram delivery pending; retrying next poll" : undefined;
+      state.notificationError = pending.length || pairLaunchDeliveryFailed
+        ? "Telegram delivery pending; retrying next poll" : undefined;
       await checkpoint(state);
       await sleep("60s");
     }
