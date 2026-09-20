@@ -66,9 +66,12 @@ export function formatAlert(s: Snapshot, options: { demo?: boolean; candidate?: 
     "",
     `MC ${money(s.pair.marketCap ?? s.pair.fdv)} · Likviditet ${money(s.pair.liquidityUsd)}`,
     `Volum ${window} ${money(volume)} · ${holderLine}`,
+    s.traders.uniqueBuyers != null
+      ? `Unike kjøpere ${s.traders.windowMinutes || 5}m ${s.traders.uniqueBuyers} · Swaps ${s.traders.sampledSwaps ?? "ukjent"}${s.traders.approximate ? " · estimert retning" : ""}`
+      : undefined,
     `${observation && novelConceptQualified(s) ? `Originalitet ${s.novelty!.score}/5 i Stonk-utvalget` : `Parmatch ${s.narrative.score}/5`} · Alder ${age(s.ageMinutes)}`,
     risky ? "⛔ Risikokrav brutt" : observation ? "⚠️ Ufullstendig verifisert – vurder manuelt" : blockers.length ? "⏳ Kontroller ufullstendige" : "✓ Obligatoriske kontroller bestått ved siste sjekk",
-  ];
+  ].filter((line): line is string => Boolean(line));
   const risks = riskSummary(s);
   if (risks.length) lines.push(`Årsak: ${risks.slice(0, 2).join("; ")}${risks.length > 2 ? ` (+${risks.length - 2} øvrige forhold)` : ""}.`);
   else if (blockers.length) lines.push("Avventer ferske og komplette markeds-/kjøperdata.");
