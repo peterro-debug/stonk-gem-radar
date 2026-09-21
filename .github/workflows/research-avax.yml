@@ -5,33 +5,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Scan full live Stonk AVAX cohort
+      - name: Check AVAX-native naming saturation
         shell: bash
         run: |
           node <<'NODE'
           const BASE="https://www.stonkfun.xyz/api/public/v1";
           const get=async u=>{const r=await fetch(u,{headers:{accept:"application/json"}});if(!r.ok)throw new Error(r.status+" "+u);return r.json()};
-          const p=(await get(BASE+"/pairs"))?.data?.pairs||[];
-          const q=p.find(x=>x.symbol==="AVAX"||x.name==="Avalanche");
-          if(!q) throw new Error("AVAX quote not found");
-          const first=await get(BASE+`/tokens?quoteMint=${encodeURIComponent(q.mint)}&sort=newest&page=1&pageSize=100`);
-          const total=Number(first?.data?.pagination?.total||0), pages=Math.ceil(total/100);
-          const all=[...(first?.data?.tokens||[])];
-          for(let page=2;page<=pages;page++){
-            const b=await get(BASE+`/tokens?quoteMint=${encodeURIComponent(q.mint)}&sort=newest&page=${page}&pageSize=100`);
-            all.push(...(b?.data?.tokens||[]));
+          const pairs=(await get(BASE+"/pairs"))?.data?.pairs||[];
+          const q=pairs.find(x=>x.symbol==="AVAX"||x.name==="Avalanche");
+          if(!q) throw new Error("no AVAX");
+          const first=await get(BASE+`/tokens?quoteMint=${q.mint}&sort=newest&page=1&pageSize=100`);
+          const total=Number(first?.data?.pagination?.total||0), pc=Math.ceil(total/100);
+          let all=[...(first?.data?.tokens||[])];
+          for(let p=2;p<=pc;p++){const b=await get(BASE+`/tokens?quoteMint=${q.mint}&sort=newest&page=${p}&pageSize=100`);all.push(...(b?.data?.tokens||[]))}
+          all=[...new Map(all.map(x=>[x.mint,x])).values()];
+          const themes=["snowman","snow","coq","chikn","kimbo","red","triangle","dorito","joe","wolf","avax","avalanche","subnet","blizzard","frost","ice","no chill","nochill","gecko","penguin"];
+          for(const t of themes){
+            const m=all.filter(x=>[x.name,x.symbol].filter(Boolean).join(" ").toLowerCase().includes(t));
+            console.log("THEME",t,"COUNT",m.length,JSON.stringify(m.slice(0,20).map(x=>({name:x.name,symbol:x.symbol,mint:x.mint,mc:x.market?.marketCapUsd,peak:x.market?.peakMarketCapUsd,vol:x.market?.volume24hUsd,status:x.status,createdAt:x.createdAt}))));
           }
-          const rows=[...new Map(all.map(x=>[x.mint,x])).values()];
-          const n=(x,k)=>Number(x?.market?.[k]||0);
-          const compact=x=>({name:x.name,symbol:x.symbol,mint:x.mint,createdAt:x.createdAt,status:x.status,mode:x.mode,
-            mc:Math.round(n(x,"marketCapUsd")),peak:Math.round(n(x,"peakMarketCapUsd")),vol:Math.round(n(x,"volume24hUsd")),
-            liq:Math.round(n(x,"liquidityUsd")),retention:n(x,"peakMarketCapUsd")?Number((n(x,"marketCapUsd")/n(x,"peakMarketCapUsd")*100).toFixed(1)):null});
-          const topPeak=[...rows].sort((a,b)=>n(b,"peakMarketCapUsd")-n(a,"peakMarketCapUsd")).slice(0,20).map(compact);
-          const topCurrent=[...rows].sort((a,b)=>n(b,"marketCapUsd")-n(a,"marketCapUsd")).slice(0,20).map(compact);
-          const topVolume=[...rows].sort((a,b)=>n(b,"volume24hUsd")-n(a,"volume24hUsd")).slice(0,20).map(compact);
-          console.log("AVAX_QUOTE",JSON.stringify(q));
-          console.log("TOTAL",rows.length);
-          console.log("TOP_PEAK",JSON.stringify(topPeak));
-          console.log("TOP_CURRENT",JSON.stringify(topCurrent));
-          console.log("TOP_VOLUME",JSON.stringify(topVolume));
           NODE
