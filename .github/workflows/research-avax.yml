@@ -5,52 +5,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Scan live Stonk AVAX pair
+      - name: Scan full live Stonk AVAX cohort
         shell: bash
         run: |
           node <<'NODE'
-          const BASE = "https://www.stonkfun.xyz/api/public/v1";
-          const get = async (u) => {
-            const r = await fetch(u, {headers:{accept:"application/json"}});
-            if(!r.ok) throw new Error(r.status+" "+u);
-            return r.json();
-          };
-          const pairsBody = await get(BASE + "/pairs");
-          const pairs = pairsBody?.data?.pairs || [];
-          const matches = pairs.filter(p => /AVAX|Avalanche/i.test([p.name,p.symbol,p.mint,p.category].filter(Boolean).join(" ")));
-          console.log("PAIR_MATCHES", JSON.stringify(matches,null,2));
-          if(!matches.length) process.exit(2);
-          for (const q of matches) {
-            const enc = encodeURIComponent(q.mint);
-            const byMc = await get(BASE+`/tokens?quoteMint=${enc}&sort=marketCap&page=1&pageSize=100`);
-            const byVol = await get(BASE+`/tokens?quoteMint=${enc}&sort=volume&page=1&pageSize=100`);
-            const newest = await get(BASE+`/tokens?quoteMint=${enc}&sort=newest&page=1&pageSize=100`);
-            const rows = [...new Map([
-              ...(byMc?.data?.tokens||[]),
-              ...(byVol?.data?.tokens||[]),
-              ...(newest?.data?.tokens||[])
-            ].map(x=>[x.mint,x])).values()];
-            const val=(x,k)=>Number(x?.market?.[k]||0);
-            const concise=x=>({
-              mint:x.mint,name:x.name,symbol:x.symbol,createdAt:x.createdAt,status:x.status,mode:x.mode,
-              marketCapUsd:val(x,"marketCapUsd"),fdvUsd:val(x,"fdvUsd"),volume24hUsd:val(x,"volume24hUsd"),
-              liquidityUsd:val(x,"liquidityUsd"),priceChange24h:val(x,"priceChange24h"),
-              peakMarketCapUsd:val(x,"peakMarketCapUsd"),graduationProgress:Number(x.graduationProgress||0),
-              quote:x.quote
-            });
-            const topMc=[...rows].sort((a,b)=>val(b,"marketCapUsd")-val(a,"marketCapUsd")).slice(0,15).map(concise);
-            const topVol=[...rows].sort((a,b)=>val(b,"volume24hUsd")-val(a,"volume24hUsd")).slice(0,15).map(concise);
-            const score=x=>{
-              const mc=Math.max(1,val(x,"marketCapUsd"));
-              const vol=val(x,"volume24hUsd"), liq=val(x,"liquidityUsd"), peak=val(x,"peakMarketCapUsd");
-              const retention=peak>0?val(x,"marketCapUsd")/peak:0;
-              return Math.log10(Math.max(1,vol))*3 + Math.log10(Math.max(1,liq))*2 + Math.min(5,vol/mc*5) + retention*4 + (x.status==="graduated"?3:0);
-            };
-            const traction=[...rows].sort((a,b)=>score(b)-score(a)).slice(0,20).map(x=>({...concise(x),tractionScore:Number(score(x).toFixed(2))}));
-            console.log("AVAX_QUOTE", JSON.stringify(q,null,2));
-            console.log("TOTAL", byMc?.data?.pagination?.total ?? rows.length);
-            console.log("TOP_MARKET_CAP", JSON.stringify(topMc,null,2));
-            console.log("TOP_VOLUME", JSON.stringify(topVol,null,2));
-            console.log("TOP_TRACTION", JSON.stringify(traction,null,2));
+          const BASE="https://www.stonkfun.xyz/api/public/v1";
+          const get=async u=>{const r=await fetch(u,{headers:{accept:"application/json"}});if(!r.ok)throw new Error(r.status+" "+u);return r.json()};
+          const p=(await get(BASE+"/pairs"))?.data?.pairs||[];
+          const q=p.find(x=>x.symbol==="AVAX"||x.name==="Avalanche");
+          if(!q) throw new Error("AVAX quote not found");
+          const first=await get(BASE+`/tokens?quoteMint=${encodeURIComponent(q.mint)}&sort=newest&page=1&pageSize=100`);
+          const total=Number(first?.data?.pagination?.total||0), pages=Math.ceil(total/100);
+          const all=[...(first?.data?.tokens||[])];
+          for(let page=2;page<=pages;page++){
+            const b=await get(BASE+`/tokens?quoteMint=${encodeURIComponent(q.mint)}&sort=newest&page=${page}&pageSize=100`);
+            all.push(...(b?.data?.tokens||[]));
           }
+          const rows=[...new Map(all.map(x=>[x.mint,x])).values()];
+          const n=(x,k)=>Number(x?.market?.[k]||0);
+          const compact=x=>({name:x.name,symbol:x.symbol,mint:x.mint,createdAt:x.createdAt,status:x.status,mode:x.mode,
+            mc:Math.round(n(x,"marketCapUsd")),peak:Math.round(n(x,"peakMarketCapUsd")),vol:Math.round(n(x,"volume24hUsd")),
+            liq:Math.round(n(x,"liquidityUsd")),retention:n(x,"peakMarketCapUsd")?Number((n(x,"marketCapUsd")/n(x,"peakMarketCapUsd")*100).toFixed(1)):null});
+          const topPeak=[...rows].sort((a,b)=>n(b,"peakMarketCapUsd")-n(a,"peakMarketCapUsd")).slice(0,20).map(compact);
+          const topCurrent=[...rows].sort((a,b)=>n(b,"marketCapUsd")-n(a,"marketCapUsd")).slice(0,20).map(compact);
+          const topVolume=[...rows].sort((a,b)=>n(b,"volume24hUsd")-n(a,"volume24hUsd")).slice(0,20).map(compact);
+          console.log("AVAX_QUOTE",JSON.stringify(q));
+          console.log("TOTAL",rows.length);
+          console.log("TOP_PEAK",JSON.stringify(topPeak));
+          console.log("TOP_CURRENT",JSON.stringify(topCurrent));
+          console.log("TOP_VOLUME",JSON.stringify(topVolume));
           NODE
