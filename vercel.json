@@ -1,8 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "git": { "deploymentEnabled": { "diagnostics/ftx-pair-verification-20260920": false } },
-  "crons": [
-    { "path": "/api/monitor/watchdog", "schedule": "*/5 * * * *" },
-    { "path": "/api/discover", "schedule": "5 5 * * *" }
-  ]
-}
